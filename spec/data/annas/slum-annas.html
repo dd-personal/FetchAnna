@@ -1,0 +1,357 @@
+<!-- FetchAnna test fixture. Source: https://open-slum.org/annas.html, fetched 2026-11-11T23:13Z (page says generated 2026-11-11T23:12:58Z). Sanitized: scripts and styles removed, each card's status timeline trimmed to its last 3 checks. Card markup otherwise as served. -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="600">
+    <title>annas - Shadow Library Uptime Monitor (SLUM)</title>
+    <link rel="icon" href="assets/logo.png">
+    <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+    <div class="container">
+<a href="index.html" class="back-link">← Back to Dashboard</a>
+<header>
+    <h1>annas</h1>
+    <p class="subtitle">
+        Status: <span class="status-badge UP">UP</span>
+    </p>
+</header>
+<div class="card" id="annas.gl">
+    <div class="card-header">
+        <div class="domain-info">
+            <a href="https://annas-archive.gl" class="card-title" target="_blank" rel="noopener noreferrer">annas-archive.gl</a>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div class="log-links">
+                <button class="log-link" data-domain-id="annas.gl" data-log-path="logs/annas/gl.log" data-domain-url="annas-archive.gl" data-archive-links='[{"date": "2026-11", "url": "logs/archive/2026-11/annas/gl.log"}, {"date": "2026-10", "url": "logs/archive/2026-10/annas/gl.log"}, {"date": "2026-09", "url": "logs/archive/2026-09/annas/gl.log"}, {"date": "2026-08", "url": "logs/archive/2026-08/annas/gl.log"}, {"date": "2026-07", "url": "logs/archive/2026-07/annas/gl.log"}]' title="View recent logs">logs</button>
+            </div>
+            <span class="status-badge protected">
+                PROTECTED
+            </span>
+        </div>
+    </div>
+    <!-- Expected vs Actual -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 0.75rem 0; font-size: 0.8rem;">
+        <!-- Expected Configuration -->
+        <div style="background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 0.75rem;">
+            <div style="color: #58a6ff; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em;">Expected</div>
+            <div style="color: #8b949e; line-height: 1.5;">
+                <div>Status: <span style="color: #c9d1d9;">200</span></div>
+                <div>Content: <span style="color: #c9d1d9; font-style: italic;">"in one place - Anna"</span></div>
+            </div>
+        </div>
+        <!-- Actual Results -->
+        <div style="background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 0.75rem;">
+            <div style="color: #f0883e; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em;">Actual</div>
+            <div style="color: #8b949e; line-height: 1.5;">
+                <div>Status: <span style="color: #c9d1d9;">200</span></div>
+                <div>Latency: <span style="color: #c9d1d9;">2629ms</span></div>
+                <div style="margin-top: 0.5rem;">Cert: Jan 15 (64d) ✓</div>
+            </div>
+        </div>
+    </div>
+    <div class="timeline" data-log-path="logs/annas/gl.log">
+        <span class="protected" data-timestamp="2026-11-11T23:00:00+00:00" data-status="PROTECTED" data-http-status="200" data-latency="1224" data-failure="" title="2026-11-11T23:00:00+00:00 - PROTECTED | HTTP 200 | 1224ms"></span>
+        <span class="protected" data-timestamp="2026-11-11T23:05:00+00:00" data-status="PROTECTED" data-http-status="200" data-latency="593" data-failure="" title="2026-11-11T23:05:00+00:00 - PROTECTED | HTTP 200 | 593ms"></span>
+        <span class="protected" data-timestamp="2026-11-11T23:10:00+00:00" data-status="PROTECTED" data-http-status="200" data-latency="2629" data-failure="" title="2026-11-11T23:10:00+00:00 - PROTECTED | HTTP 200 | 2629ms"></span>
+    </div>
+    <div style="margin-top: 0.75rem; padding: 0.5rem; background: #161b22; border: 1px solid #238636; border-radius: 4px; font-size: 0.75rem;">
+        <strong style="color: #3fb950;">Protected Site</strong>
+        <span style="color: #58a6ff; margin-left: 0.5rem;">DDoS-Guard</span>
+        <p style="margin: 0.25rem 0 0 0; color: #8b949e;">
+            Bot protection active. Content checks skipped.
+        </p>
+    </div>
+</div>
+<div class="card" id="annas.pk">
+    <div class="card-header">
+        <div class="domain-info">
+            <a href="https://annas-archive.pk" class="card-title" target="_blank" rel="noopener noreferrer">annas-archive.pk</a>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div class="log-links">
+                <button class="log-link" data-domain-id="annas.pk" data-log-path="logs/annas/pk.log" data-domain-url="annas-archive.pk" data-archive-links='[{"date": "2026-11", "url": "logs/archive/2026-11/annas/pk.log"}, {"date": "2026-10", "url": "logs/archive/2026-10/annas/pk.log"}, {"date": "2026-09", "url": "logs/archive/2026-09/annas/pk.log"}, {"date": "2026-08", "url": "logs/archive/2026-08/annas/pk.log"}, {"date": "2026-07", "url": "logs/archive/2026-07/annas/pk.log"}]' title="View recent logs">logs</button>
+            </div>
+            <span class="status-badge protected">
+                PROTECTED
+            </span>
+        </div>
+    </div>
+    <!-- Expected vs Actual -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 0.75rem 0; font-size: 0.8rem;">
+        <!-- Expected Configuration -->
+        <div style="background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 0.75rem;">
+            <div style="color: #58a6ff; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em;">Expected</div>
+            <div style="color: #8b949e; line-height: 1.5;">
+                <div>Status: <span style="color: #c9d1d9;">200</span></div>
+                <div>Content: <span style="color: #c9d1d9; font-style: italic;">"in one place - Anna"</span></div>
+            </div>
+        </div>
+        <!-- Actual Results -->
+        <div style="background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 0.75rem;">
+            <div style="color: #f0883e; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em;">Actual</div>
+            <div style="color: #8b949e; line-height: 1.5;">
+                <div>Status: <span style="color: #c9d1d9;">200</span></div>
+                <div>Latency: <span style="color: #c9d1d9;">617ms</span></div>
+                <div style="margin-top: 0.5rem;">Cert: Feb 04 (84d) ✓</div>
+            </div>
+        </div>
+    </div>
+    <div class="timeline" data-log-path="logs/annas/pk.log">
+        <span class="protected" data-timestamp="2026-11-11T23:00:00+00:00" data-status="PROTECTED" data-http-status="200" data-latency="530" data-failure="" title="2026-11-11T23:00:00+00:00 - PROTECTED | HTTP 200 | 530ms"></span>
+        <span class="protected" data-timestamp="2026-11-11T23:05:00+00:00" data-status="PROTECTED" data-http-status="200" data-latency="1464" data-failure="" title="2026-11-11T23:05:00+00:00 - PROTECTED | HTTP 200 | 1464ms"></span>
+        <span class="protected" data-timestamp="2026-11-11T23:10:00+00:00" data-status="PROTECTED" data-http-status="200" data-latency="617" data-failure="" title="2026-11-11T23:10:00+00:00 - PROTECTED | HTTP 200 | 617ms"></span>
+    </div>
+    <div style="margin-top: 0.75rem; padding: 0.5rem; background: #161b22; border: 1px solid #238636; border-radius: 4px; font-size: 0.75rem;">
+        <strong style="color: #3fb950;">Protected Site</strong>
+        <span style="color: #58a6ff; margin-left: 0.5rem;">DDoS-Guard</span>
+        <p style="margin: 0.25rem 0 0 0; color: #8b949e;">
+            Bot protection active. Content checks skipped.
+        </p>
+    </div>
+</div>
+<div class="card" id="annas.gd">
+    <div class="card-header">
+        <div class="domain-info">
+            <a href="https://annas-archive.gd" class="card-title" target="_blank" rel="noopener noreferrer">annas-archive.gd</a>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div class="log-links">
+                <button class="log-link" data-domain-id="annas.gd" data-log-path="logs/annas/gd.log" data-domain-url="annas-archive.gd" data-archive-links='[{"date": "2026-11", "url": "logs/archive/2026-11/annas/gd.log"}, {"date": "2026-10", "url": "logs/archive/2026-10/annas/gd.log"}, {"date": "2026-09", "url": "logs/archive/2026-09/annas/gd.log"}, {"date": "2026-08", "url": "logs/archive/2026-08/annas/gd.log"}, {"date": "2026-07", "url": "logs/archive/2026-07/annas/gd.log"}]' title="View recent logs">logs</button>
+            </div>
+            <span class="status-badge protected">
+                PROTECTED
+            </span>
+        </div>
+    </div>
+    <!-- Expected vs Actual -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 0.75rem 0; font-size: 0.8rem;">
+        <!-- Expected Configuration -->
+        <div style="background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 0.75rem;">
+            <div style="color: #58a6ff; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em;">Expected</div>
+            <div style="color: #8b949e; line-height: 1.5;">
+                <div>Status: <span style="color: #c9d1d9;">200</span></div>
+                <div>Content: <span style="color: #c9d1d9; font-style: italic;">"in one place - Anna"</span></div>
+            </div>
+        </div>
+        <!-- Actual Results -->
+        <div style="background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 0.75rem;">
+            <div style="color: #f0883e; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em;">Actual</div>
+            <div style="color: #8b949e; line-height: 1.5;">
+                <div>Status: <span style="color: #c9d1d9;">200</span></div>
+                <div>Latency: <span style="color: #c9d1d9;">2605ms</span></div>
+                <div style="margin-top: 0.5rem;">Cert: Feb 08 (88d) ✓</div>
+            </div>
+        </div>
+    </div>
+    <div class="timeline" data-log-path="logs/annas/gd.log">
+        <span class="protected" data-timestamp="2026-11-11T23:00:00+00:00" data-status="PROTECTED" data-http-status="200" data-latency="2110" data-failure="" title="2026-11-11T23:00:00+00:00 - PROTECTED | HTTP 200 | 2110ms"></span>
+        <span class="protected" data-timestamp="2026-11-11T23:05:00+00:00" data-status="PROTECTED" data-http-status="200" data-latency="1417" data-failure="" title="2026-11-11T23:05:00+00:00 - PROTECTED | HTTP 200 | 1417ms"></span>
+        <span class="protected" data-timestamp="2026-11-11T23:10:00+00:00" data-status="PROTECTED" data-http-status="200" data-latency="2605" data-failure="" title="2026-11-11T23:10:00+00:00 - PROTECTED | HTTP 200 | 2605ms"></span>
+    </div>
+    <div style="margin-top: 0.75rem; padding: 0.5rem; background: #161b22; border: 1px solid #238636; border-radius: 4px; font-size: 0.75rem;">
+        <strong style="color: #3fb950;">Protected Site</strong>
+        <span style="color: #58a6ff; margin-left: 0.5rem;">DDoS-Guard</span>
+        <p style="margin: 0.25rem 0 0 0; color: #8b949e;">
+            Bot protection active. Content checks skipped.
+        </p>
+    </div>
+</div>
+<div class="card" id="annas.software">
+    <div class="card-header">
+        <div class="domain-info">
+            <a href="https://software.annas-archive.gl" class="card-title" target="_blank" rel="noopener noreferrer">software.annas-archive.gl</a>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div class="log-links">
+                <button class="log-link" data-domain-id="annas.software" data-log-path="logs/annas/software.log" data-domain-url="software.annas-archive.gl" data-archive-links='[{"date": "2026-11", "url": "logs/archive/2026-11/annas/software.log"}, {"date": "2026-10", "url": "logs/archive/2026-10/annas/software.log"}, {"date": "2026-09", "url": "logs/archive/2026-09/annas/software.log"}, {"date": "2026-08", "url": "logs/archive/2026-08/annas/software.log"}, {"date": "2026-07", "url": "logs/archive/2026-07/annas/software.log"}]' title="View recent logs">logs</button>
+            </div>
+            <span class="status-badge protected">
+                PROTECTED
+            </span>
+        </div>
+    </div>
+    <!-- Expected vs Actual -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 0.75rem 0; font-size: 0.8rem;">
+        <!-- Expected Configuration -->
+        <div style="background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 0.75rem;">
+            <div style="color: #58a6ff; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em;">Expected</div>
+            <div style="color: #8b949e; line-height: 1.5;">
+                <div>Status: <span style="color: #c9d1d9;">200</span></div>
+                <div>Content: <span style="color: #c9d1d9; font-style: italic;">"AnnaArchivist"</span></div>
+            </div>
+        </div>
+        <!-- Actual Results -->
+        <div style="background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 0.75rem;">
+            <div style="color: #f0883e; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em;">Actual</div>
+            <div style="color: #8b949e; line-height: 1.5;">
+                <div>Status: <span style="color: #c9d1d9;">200</span></div>
+                <div>Latency: <span style="color: #c9d1d9;">818ms</span></div>
+                <div style="margin-top: 0.5rem;">Cert: Jan 18 (67d) ✓</div>
+            </div>
+        </div>
+    </div>
+    <div class="timeline" data-log-path="logs/annas/software.log">
+        <span class="protected" data-timestamp="2026-11-11T23:00:00+00:00" data-status="PROTECTED" data-http-status="200" data-latency="541" data-failure="" title="2026-11-11T23:00:00+00:00 - PROTECTED | HTTP 200 | 541ms"></span>
+        <span class="protected" data-timestamp="2026-11-11T23:05:00+00:00" data-status="PROTECTED" data-http-status="200" data-latency="843" data-failure="" title="2026-11-11T23:05:00+00:00 - PROTECTED | HTTP 200 | 843ms"></span>
+        <span class="protected" data-timestamp="2026-11-11T23:10:00+00:00" data-status="PROTECTED" data-http-status="200" data-latency="818" data-failure="" title="2026-11-11T23:10:00+00:00 - PROTECTED | HTTP 200 | 818ms"></span>
+    </div>
+    <div style="margin-top: 0.75rem; padding: 0.5rem; background: #161b22; border: 1px solid #238636; border-radius: 4px; font-size: 0.75rem;">
+        <strong style="color: #3fb950;">Protected Site</strong>
+        <span style="color: #58a6ff; margin-left: 0.5rem;">DDoS-Guard</span>
+        <p style="margin: 0.25rem 0 0 0; color: #8b949e;">
+            Bot protection active. Content checks skipped.
+        </p>
+    </div>
+</div>
+<div class="card" id="annas.dl1">
+    <div class="card-header">
+        <div class="domain-info">
+            <a href="https://yqrii5.org" class="card-title" target="_blank" rel="noopener noreferrer">yqrii5.org</a>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div class="log-links">
+                <button class="log-link" data-domain-id="annas.dl1" data-log-path="logs/annas/dl1.log" data-domain-url="yqrii5.org" data-archive-links='[{"date": "2026-11", "url": "logs/archive/2026-11/annas/dl1.log"}, {"date": "2026-10", "url": "logs/archive/2026-10/annas/dl1.log"}, {"date": "2026-09", "url": "logs/archive/2026-09/annas/dl1.log"}, {"date": "2026-08", "url": "logs/archive/2026-08/annas/dl1.log"}, {"date": "2026-07", "url": "logs/archive/2026-07/annas/dl1.log"}]' title="View recent logs">logs</button>
+            </div>
+            <span class="status-badge up">
+                UP
+            </span>
+        </div>
+    </div>
+    <!-- Expected vs Actual -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 0.75rem 0; font-size: 0.8rem;">
+        <!-- Expected Configuration -->
+        <div style="background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 0.75rem;">
+            <div style="color: #58a6ff; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em;">Expected</div>
+            <div style="color: #8b949e; line-height: 1.5;">
+                <div>Status: <span style="color: #c9d1d9;">403</span></div>
+                <div>Content: <span style="color: #c9d1d9; font-style: italic;">"Link expired or invalid"</span></div>
+            </div>
+        </div>
+        <!-- Actual Results -->
+        <div style="background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 0.75rem;">
+            <div style="color: #f0883e; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em;">Actual</div>
+            <div style="color: #8b949e; line-height: 1.5;">
+                <div>Status: <span style="color: #c9d1d9;">403</span></div>
+                <div>Latency: <span style="color: #c9d1d9;">364ms</span></div>
+                <div style="margin-top: 0.5rem;">Cert: Feb 02 (82d) ✓</div>
+            </div>
+        </div>
+    </div>
+    <div class="timeline" data-log-path="logs/annas/dl1.log">
+        <span class="up" data-timestamp="2026-11-11T23:00:00+00:00" data-status="UP" data-http-status="403" data-latency="350" data-failure="" title="2026-11-11T23:00:00+00:00 - UP | HTTP 403 | 350ms"></span>
+        <span class="up" data-timestamp="2026-11-11T23:05:00+00:00" data-status="UP" data-http-status="403" data-latency="379" data-failure="" title="2026-11-11T23:05:00+00:00 - UP | HTTP 403 | 379ms"></span>
+        <span class="up" data-timestamp="2026-11-11T23:10:00+00:00" data-status="UP" data-http-status="403" data-latency="364" data-failure="" title="2026-11-11T23:10:00+00:00 - UP | HTTP 403 | 364ms"></span>
+    </div>
+</div>
+<div class="card" id="annas.dl2">
+    <div class="card-header">
+        <div class="domain-info">
+            <a href="https://wbsg8v.xyz" class="card-title" target="_blank" rel="noopener noreferrer">wbsg8v.xyz</a>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div class="log-links">
+                <button class="log-link" data-domain-id="annas.dl2" data-log-path="logs/annas/dl2.log" data-domain-url="wbsg8v.xyz" data-archive-links='[{"date": "2026-11", "url": "logs/archive/2026-11/annas/dl2.log"}, {"date": "2026-10", "url": "logs/archive/2026-10/annas/dl2.log"}, {"date": "2026-09", "url": "logs/archive/2026-09/annas/dl2.log"}, {"date": "2026-08", "url": "logs/archive/2026-08/annas/dl2.log"}, {"date": "2026-07", "url": "logs/archive/2026-07/annas/dl2.log"}]' title="View recent logs">logs</button>
+            </div>
+            <span class="status-badge up">
+                UP
+            </span>
+        </div>
+    </div>
+    <!-- Expected vs Actual -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 0.75rem 0; font-size: 0.8rem;">
+        <!-- Expected Configuration -->
+        <div style="background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 0.75rem;">
+            <div style="color: #58a6ff; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em;">Expected</div>
+            <div style="color: #8b949e; line-height: 1.5;">
+                <div>Status: <span style="color: #c9d1d9;">403</span></div>
+                <div>Content: <span style="color: #c9d1d9; font-style: italic;">"Link expired or invalid"</span></div>
+            </div>
+        </div>
+        <!-- Actual Results -->
+        <div style="background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 0.75rem;">
+            <div style="color: #f0883e; font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em;">Actual</div>
+            <div style="color: #8b949e; line-height: 1.5;">
+                <div>Status: <span style="color: #c9d1d9;">403</span></div>
+                <div>Latency: <span style="color: #c9d1d9;">441ms</span></div>
+                <div style="margin-top: 0.5rem;">Cert: Feb 03 (83d) ✓</div>
+            </div>
+        </div>
+    </div>
+    <div class="timeline" data-log-path="logs/annas/dl2.log">
+        <span class="up" data-timestamp="2026-11-11T23:00:00+00:00" data-status="UP" data-http-status="403" data-latency="425" data-failure="" title="2026-11-11T23:00:00+00:00 - UP | HTTP 403 | 425ms"></span>
+        <span class="up" data-timestamp="2026-11-11T23:05:00+00:00" data-status="UP" data-http-status="403" data-latency="485" data-failure="" title="2026-11-11T23:05:00+00:00 - UP | HTTP 403 | 485ms"></span>
+        <span class="up" data-timestamp="2026-11-11T23:10:00+00:00" data-status="UP" data-http-status="403" data-latency="441" data-failure="" title="2026-11-11T23:10:00+00:00 - UP | HTTP 403 | 441ms"></span>
+    </div>
+</div>
+<div class="legend">
+    <div class="legend-item" title="Site is accessible (UP) or behind expected bot protection (PROTECTED)">
+        <div class="legend-color up"></div>
+        <span>Up / Protected</span>
+    </div>
+    <div class="legend-item" title="1 check failed in 5-minute window">
+        <div class="legend-color degraded"></div>
+        <span>Degraded</span>
+    </div>
+    <div class="legend-item" title="2+ failures, unexpected response, or timeout">
+        <div class="legend-color down"></div>
+        <span>Down / Timeout</span>
+    </div>
+    <div class="legend-item" title="No recent check data">
+        <div class="legend-color unknown"></div>
+        <span>Unknown</span>
+    </div>
+</div>
+<div style="margin-top: 1rem; font-size: 0.75rem; color: #6e7681; line-height: 1.6;">
+    <strong>Reading the statuses:</strong>
+<span style="color:#3fb950">UP</span> = the page loaded and the expected content matched.
+<span style="color:#3fb950">PROTECTED</span> = the service is alive behind a bot challenge (Cloudflare, DDoS-Guard, DiamWall). The challenge page was served, so the origin is reachable, but the content was not verified.
+<span style="color:#d29922">DEGRADED</span> = one recent check failed.
+<span style="color:#f85149">DOWN</span> = repeated failures or timeouts.
+<span style="color:#6e7681">UNKNOWN</span> = no recent data.<br>
+<strong>Anna's Archive download servers:</strong> <code>yqrii5.org</code> and <code>wbsg8v.xyz</code> are download endpoints; an HTTP 403 "Link expired or invalid" is the expected healthy response.
+</div>
+<!-- Log Preview Modal -->
+<div id="logModal" class="log-modal">
+    <div class="log-modal-content">
+        <div class="log-modal-header">
+            <h3 id="logModalTitle">Recent Log Entries</h3>
+            <button class="log-modal-close" onclick="closeLogModal()">&times;</button>
+        </div>
+        <div class="log-modal-body">
+            <div id="logModalLoading" class="log-modal-loading">Loading...</div>
+            <div id="logModalError" class="log-modal-error" style="display: none;"></div>
+            <table id="logModalTable" class="log-modal-table" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Status</th>
+                        <th>HTTP</th>
+                        <th>Latency</th>
+                        <th>Reason</th>
+                    </tr>
+                </thead>
+                <tbody id="logModalTableBody">
+                </tbody>
+            </table>
+        </div>
+        <div class="log-modal-footer">
+            <a id="logModalFullLog" href="#" target="_blank" rel="noopener noreferrer" class="log-modal-btn">View full log</a>
+            <div id="logModalArchives" class="log-modal-archives" style="display: none;">
+                <span class="log-modal-archives-label">Archives:</span>
+                <div id="logModalArchivesList" class="log-modal-archives-list"></div>
+            </div>
+        </div>
+    </div>
+</div>
+        <div class="footer">
+            <div class="footer-links">
+                <a href="/dmca.html" target="_blank" rel="noopener noreferrer">DMCA</a>
+            </div>
+            <p>Generated at 2026-11-11T23:12:58.398698+00:00 | US-East-Primary | <a href="https://github.com/BrianZbr/flatmonitor" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: none;">built with FlatMonitor</a></p>
+        </div>
+    </div>
+</body>
+</html>

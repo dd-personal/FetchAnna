@@ -6,7 +6,7 @@ describe("DownloadProgress", function()
     before_each(function()
         helper.reset()
         cancels = 0
-        widget = require("ui.downloadprogress").new("Dune", function()
+        widget = require("fetchanna.ui.downloadprogress").new("Dune", function()
             cancels = cancels + 1
         end)
     end)
@@ -23,12 +23,12 @@ describe("DownloadProgress", function()
         assert.is_true(helper.wasClosed(widget.container))
     end)
 
-    -- which couldn't be reached on devices with keys rather than a touch screen
+    -- For devices with keys and no touch screen.
     it("is hidden with the Back key, with its buttons reachable with the others", function()
         helper.stubs.device.keys = true
-        widget = require("ui.downloadprogress").new("Dune", function() end)
+        widget = require("fetchanna.ui.downloadprogress").new("Dune", function() end)
         widget:show()
-        -- (KOReader's group of keys that are Back)
+        -- KOReader's group of Back keys.
         assert.are.same({ { { "Back" } } }, widget.container.key_events.Close)
         assert.are.same({ { widget.cancel_button, widget.hide_button } }, widget.container.layout)
 
@@ -38,7 +38,7 @@ describe("DownloadProgress", function()
         assert.are.equal(0, cancels)
     end)
 
-    -- a fixed height cut the text off on screens with more dots to the inch, where its font is bigger
+    -- A fixed height cuts the text off on high-DPI screens, where the font is bigger.
     it("makes room for its status, whatever the screen", function()
         assert.are.equal(widget.status_widget:getSize().h, widget.status_container.dimen.h)
     end)
@@ -53,7 +53,7 @@ describe("DownloadProgress", function()
         assert.are.equal("25% · 1.0 / 4.0 MB", widget.status_widget.text)
     end)
 
-    -- an e-ink screen is slow to refresh, and a download updates its progress twice a second
+    -- E-ink refreshes slowly, and progress updates twice a second.
     it("only refreshes the part of the screen it takes up", function()
         widget.frame.dimen = { x = 100, y = 300, w = 400, h = 200 }
         widget:show()
@@ -87,7 +87,7 @@ describe("DownloadProgress", function()
         assert.is_false(widget.is_visible)
         assert.is_true(helper.wasClosed(hidden_container))
 
-        -- not redrawn or closed again while hidden
+        -- Not redrawn or closed again while hidden.
         widget:update(0.5, "50%")
         assert.are.equal(0, widget.bar_widget.percentage)
         local closes = #helper.state.closed
@@ -101,7 +101,7 @@ describe("DownloadProgress", function()
         assert.are.equal(widget.container, helper.lastShown())
     end)
 
-    -- KOReader frees widgets once closed, so showing the same ones again would crash
+    -- KOReader frees closed widgets, so showing them again would crash.
     it("makes new widgets when shown again, with the progress made while hidden", function()
         widget:show()
         local old = {
@@ -137,7 +137,7 @@ describe("DownloadProgress", function()
         assert.are.equal(0, widget.bar_widget.percentage)
     end)
 
-    -- such as the download link being looked up, before the download starts (see Trapper:dismissablePopen)
+    -- For example the download link lookup (see Trapper:dismissablePopen).
     it("calls off what's being waited for when cancelled, once it has closed", function()
         local dismissed = 0
         widget:show()
@@ -152,7 +152,7 @@ describe("DownloadProgress", function()
         assert.are.equal(1, cancels)
     end)
 
-    -- what was being waited for may close it too, as it's cancelled
+    -- What was waited for may close it too.
     it("is only closed once", function()
         widget:show()
         widget:close()
@@ -162,7 +162,7 @@ describe("DownloadProgress", function()
     end)
 
     it("can be cancelled without a cancel callback", function()
-        widget = require("ui.downloadprogress").new("Dune")
+        widget = require("fetchanna.ui.downloadprogress").new("Dune")
         widget:cancel()
         assert.is_true(widget.cancelled)
     end)

@@ -1,16 +1,19 @@
 local helper = require("helper")
 local fixtures = require("fixtures")
 
--- mirrors are scraped from the live Wikipedia page, so these need internet access
 describe("Downloader", function()
     local MB = 1024 * 1024
     local data_dir, filepath, book, web, mirrors, prompts, spawned, running, killed, results, remote_size
-    -- the md5 of what arrived, where it isn't the one the site listed (see FileCheck)
+    -- The ETag the server sends with the book, if any (see CurlUtil.getValidator).
+    local remote_etag
+    -- The md5 of what arrived, where it isn't the one the site listed (see FileCheck).
     local arrived_md5
-    -- whether curl can fetch, and which downloads were started with KOReader's own HTTP, as they are where it can't
+    -- Whether curl can fetch, and the downloads started with KOReader's own HTTP.
     local can_fetch, koreader_downloads
     local cover_downloads
-    local CurlUtil, UrlApi, Downloader
+    local CurlUtil, Downloader
+    -- What the site lists the book's file as, if anything (see testSource).
+    local listed_by_site
 
     local function adsUrl(mirror)
         return mirror .. "/ads.php?md5=" .. book.id
@@ -21,7 +24,58 @@ describe("Downloader", function()
     end
 
     local function hasBook(mirror)
-        web.pages[adsUrl(mirror)] = fixtures.libgenAds(book.id)
+        web.pages[adsUrl(mirror)] = fixtures.adsPage(book.id)
+    end
+
+    -- The site these specs download from: none FetchAnna uses is as simple. Its mirrors, listed on MIRRORS_PAGE, are
+    -- tried in turn, as KindleFetch's Library Genesis was. Each has a page per book linking to its file, and lists the
+    -- file by its md5, which is its id. When a mirror lacks the book, the link is looked up again (see Downloader).
+    local MIRRORS_PAGE = "https://mirrors.example/list"
+    local MIRRORS = { "https://books1.example", "https://books2.example" }
+    local function testSource()
+        local HttpUtil = require("fetchanna.util.httputil")
+        return {
+            NAME = "Test Library",
+            findDownloadLink = function(found)
+                local list, list_err = HttpUtil.getBody(MIRRORS_PAGE)
+                if list_err == HttpUtil.CANCELLED then
+                    return nil, HttpUtil.CANCELLED
+                end
+                local listed = {}
+                for mirror in (list or ""):gmatch("%S+") do
+                    table.insert(listed, mirror)
+                end
+                local mirror_failed = false
+                for i, mirror in ipairs(listed) do
+                    -- The download's progress says this (see HttpUtil.sayStatus).
+                    HttpUtil.sayStatus(
+                        string.format("Trying %s (mirror %d of %d)...", mirror:match("[^/]+$"), i, #listed)
+                    )
+                    local page, err = HttpUtil.getBody(adsUrl(mirror))
+                    if err == HttpUtil.CANCELLED then
+                        return nil, HttpUtil.CANCELLED
+                    end
+                    local link = page and page:match('href="(get%.php[^"]+)"')
+                    if link then
+                        HttpUtil.sayStatus(nil)
+                        return mirror .. "/" .. link, nil, mirror_failed, listed_by_site or { md5 = found.id }
+                    end
+                    mirror_failed = true
+                end
+                HttpUtil.sayStatus(nil)
+                return nil, "no mirror has the book", mirror_failed
+            end,
+        }
+    end
+    -- Returns how many times the mirrors have been looked up.
+    local function scrapes()
+        local count = 0
+        for _, url in ipairs(web.fetched) do
+            if url == MIRRORS_PAGE then
+                count = count + 1
+            end
+        end
+        return count
     end
 
     local saved_filepath, opened_existing
@@ -38,7 +92,7 @@ describe("Downloader", function()
         opened_existing = path
     end
 
-    -- ask to download the book, then confirm the download prompt
+    -- Asks to download the book, then confirms the download prompt.
     local function download()
         local shown = #prompts
         Downloader:downloadBook(book, filepath, onResult, onOpenExisting)
@@ -51,12 +105,16 @@ describe("Downloader", function()
         return Downloader.active_downloads[book.id].progress_widget
     end
 
-    -- simulate curl noting down the headers it was sent, then writing the book and exiting
+    -- Simulates curl saving the headers, writing the book and exiting.
     local function curlWrote(bytes, exit_code)
         if remote_size then
             helper.writeFile(
                 spawned[#spawned].headers_file,
-                "HTTP/2 200\r\ncontent-type: application/epub+zip\r\ncontent-length: " .. remote_size .. "\r\n\r\n"
+                "HTTP/2 200\r\ncontent-type: application/epub+zip\r\ncontent-length: "
+                    .. remote_size
+                    .. "\r\n"
+                    .. (remote_etag and "etag: " .. remote_etag .. "\r\n" or "")
+                    .. "\r\n"
             )
         end
         helper.writeFile(spawned[#spawned].path, fixtures.bookFile(book.file_type, bytes))
@@ -65,20 +123,20 @@ describe("Downloader", function()
         end
     end
 
-    -- what a site sends in place of a book, e.g. to say it's busy
+    -- What a site sends in place of a book, for example to say it's busy.
     local PAGE = "<!DOCTYPE html>\n<html><head><title>Please wait</title></head><body>Busy</body></html>"
 
-    -- simulate curl downloading what the site sent in place of the book, all of it, then exiting
+    -- Simulates curl downloading what the site sent in place of the book, then exiting.
     local function curlSent(content)
         helper.writeFile(spawned[#spawned].headers_file, "HTTP/2 200\r\ncontent-length: " .. #content .. "\r\n\r\n")
         helper.writeFile(spawned[#spawned].path, content)
         helper.writeFile(spawned[#spawned].exit_file, "0")
     end
 
-    -- the md5 of the book that arrived, worked out a step at a time: none until the given step, then the md5 listed
+    -- Makes the md5 check take steps: no md5 until the given step, then the one listed.
     local function checkTakesSteps(steps)
         local checks = { steps = 0 }
-        require("util.filecheck").md5 = function()
+        require("fetchanna.util.filecheck").md5 = function()
             return {
                 step = function()
                     checks.steps = checks.steps + 1
@@ -100,7 +158,7 @@ describe("Downloader", function()
         helper.run("mkdir -p " .. helper.quote(data_dir .. "/Books"))
         filepath = data_dir .. "/Dune.epub"
         book = {
-            source = "libgen",
+            source = "test",
             id = fixtures.DUNE.md5,
             title = "Dune",
             display_title = "Dune",
@@ -111,9 +169,10 @@ describe("Downloader", function()
         prompts, spawned, running, killed, results = {}, {}, {}, {}, {}
         opened_existing = nil
         remote_size = MB
+        remote_etag = nil
         web = fixtures.fakeWeb(helper)
 
-        CurlUtil = require("util.curlutil")
+        CurlUtil = require("fetchanna.util.curlutil")
         can_fetch, koreader_downloads = true, {}
         CurlUtil.canFetch = function()
             return can_fetch
@@ -128,15 +187,17 @@ describe("Downloader", function()
                 headers_file = opts.headers_file,
                 stall_time = opts.stall_time,
                 resume = opts.resume,
+                if_range = opts.if_range,
+                sensitive = opts.sensitive,
             })
             return spawned[#spawned].pid, exit_file
         end
-        -- which is followed just as curl is (see HttpDownload)
-        require("util.httpdownload").start = function(url, path, opts)
+        -- Followed the same way as a curl download (see HttpDownload).
+        require("fetchanna.util.httpdownload").start = function(url, path, opts)
             table.insert(koreader_downloads, url)
             return CurlUtil.startDownload(url, path, nil, opts)
         end
-        -- book covers, which download in the background (and fail here)
+        -- Book covers download in the background, and fail here.
         cover_downloads = {}
         CurlUtil.downloadMultiple = function(urls)
             table.insert(cover_downloads, urls)
@@ -148,9 +209,9 @@ describe("Downloader", function()
         CurlUtil.killPid = function(pid)
             table.insert(killed, pid)
         end
-        -- worked out a piece at a time, all at once here
+        -- Worked out a piece at a time, all at once here.
         arrived_md5 = nil
-        require("util.filecheck").md5 = function()
+        require("fetchanna.util.filecheck").md5 = function()
             return {
                 step = function()
                     return arrived_md5 or book.id:lower()
@@ -159,7 +220,7 @@ describe("Downloader", function()
             }
         end
 
-        helper.stub("ui.downloadprompt", {
+        helper.stub("fetchanna.ui.downloadprompt", {
             new = function(prompt_book, prompt_filepath, on_download)
                 return {
                     book = prompt_book,
@@ -172,13 +233,13 @@ describe("Downloader", function()
             end,
         })
 
-        UrlApi = require("api.urlapi")
-        Downloader = require("api.downloader")
+        require("fetchanna.api.sources").test = testSource()
+        listed_by_site = nil
+        Downloader = require("fetchanna.api.downloader")
         Downloader.active_downloads = {}
 
-        mirrors = fixtures.scrapeMirrors(web, function(api)
-            return api:getLibgenUrls()
-        end, "Library Genesis")
+        mirrors = MIRRORS
+        web.pages[MIRRORS_PAGE] = table.concat(MIRRORS, "\n")
         hasBook(mirrors[1])
     end)
 
@@ -208,7 +269,7 @@ describe("Downloader", function()
             book.image_url = nil
             Downloader:downloadBook(book, filepath, onResult)
 
-            assert.is_false(require("cache.covercache"):cacheExists(book.id))
+            assert.is_false(require("fetchanna.cache.covercache"):cacheExists(book.id))
             assert.are.equal(1, #prompts)
         end)
 
@@ -217,7 +278,7 @@ describe("Downloader", function()
             helper.runScheduled()
 
             assert.are.equal(1, #prompts)
-            assert.is_false(require("cache.covercache"):cacheExists(book.id))
+            assert.is_false(require("fetchanna.cache.covercache"):cacheExists(book.id))
         end)
 
         it("downloads to the folder chosen in the prompt", function()
@@ -247,7 +308,7 @@ describe("Downloader", function()
                 confirm = helper.lastShown()
             end)
 
-            -- rather than downloading over what may be another edition with the same title
+            -- It may be another edition with the same title.
             it("asks before downloading over it", function()
                 assert.are.equal(filepath .. " already exists.", confirm.text)
                 assert.are.equal("Overwrite", confirm.ok_text)
@@ -259,7 +320,7 @@ describe("Downloader", function()
                 confirm.ok_callback()
                 assert.are.equal(1, #spawned)
 
-                -- keeping it until the new one has all arrived
+                -- The old file is kept until the new one has all arrived.
                 curlWrote(MB / 2)
                 helper.tick()
                 assert.are.equal("another edition of Dune", helper.readFile(filepath))
@@ -306,8 +367,7 @@ describe("Downloader", function()
             end)
         end)
 
-        -- which was only found out once its link had been looked up, which can count as one of the few downloads
-        -- Z-Library allows a day
+        -- Otherwise it's only found out after the link lookup, which can count as a fast download.
         it("doesn't look up the link when the folder chosen can't be found", function()
             Downloader:downloadBook(book, filepath, onResult)
             prompts[1].on_download(data_dir .. "/SD card/Dune.epub")
@@ -325,11 +385,11 @@ describe("Downloader", function()
             assert.are.equal(0, #web.fetched)
         end)
 
-        -- e.g. another edition with the same title, which shared its .part file, so one was saved as the other
+        -- For example another edition with the same title. Sharing a .part file, one would be saved as the other.
         it("doesn't download two books to the same name at once", function()
             download()
             local other_edition = {
-                source = "libgen",
+                source = "test",
                 id = fixtures.DUNE.md5:gsub("^.", "f"),
                 title = "Dune",
                 file_type = "epub",
@@ -382,20 +442,20 @@ describe("Downloader", function()
                 pid = 1000,
                 exit_file = spawned[1].exit_file,
                 headers_file = spawned[1].headers_file,
-                -- rather than waiting forever on a download that has stalled
+                -- So a stalled download isn't waited on forever.
                 stall_time = 30,
-                -- and when curl tries it again, carrying on from where it stopped rather than from the beginning
+                -- And curl's retries carry on from where it stopped.
                 resume = true,
             }, spawned[1])
             assert.is_string(spawned[1].headers_file)
         end)
 
-        -- which can mean trying several mirrors, each taking a while to answer
+        -- This can mean trying several mirrors, each taking a while to answer.
         describe("while looking up the download link", function()
             local HttpUtil, Trapper, getBody
 
             before_each(function()
-                HttpUtil = require("util.httputil")
+                HttpUtil = require("fetchanna.util.httputil")
                 Trapper = require("ui/trapper")
                 getBody = HttpUtil.getBody
             end)
@@ -408,7 +468,7 @@ describe("Downloader", function()
                 end
 
                 download()
-                -- Wikipedia's list of mirrors, then the mirror's download page
+                -- The site's list of mirrors, then the mirror's page for the book.
                 assert.are.equal(2, #waits)
                 for _, wait in ipairs(waits) do
                     assert.is_true(wait.wrapped)
@@ -418,7 +478,7 @@ describe("Downloader", function()
                 assert.are.equal(1, #spawned)
             end)
 
-            -- whose taps would only arrive once it's over
+            -- Taps would only arrive once it's over.
             it("can't be cancelled or hidden while KOReader's own HTTP holds KOReader up", function()
                 can_fetch = false
                 local enabled = {}
@@ -462,13 +522,11 @@ describe("Downloader", function()
                 assert.are.equal(0, #spawned)
                 assert.are.same({}, Downloader:getActiveDownloads())
                 assert.is_nil(HttpUtil.getTrapWidget())
-                -- none are dropped, or looked up again
-                HttpUtil.getBody = getBody
-                assert.are.same(mirrors, UrlApi:getLibgenUrls())
-                assert.are.equal(1, web.scrapes)
+                -- Nor looked up again.
+                assert.are.equal(1, scrapes())
             end)
 
-            -- rather than showing again, as a new download's would
+            -- A new download's progress would show again. This one stays hidden.
             it("stays hidden when hidden while a mirror fails, and the mirrors are looked up again", function()
                 local failed = false
                 HttpUtil.getBody = function(url)
@@ -481,7 +539,7 @@ describe("Downloader", function()
                 end
 
                 download()
-                assert.are.equal(2, web.scrapes)
+                assert.are.equal(2, scrapes())
                 assert.are.equal(1, #spawned)
                 assert.is_false(progress().is_visible)
             end)
@@ -502,7 +560,7 @@ describe("Downloader", function()
             end)
         end)
 
-        -- which KOReader would have exited on, leaving curl running and the progress up
+        -- Unhandled, KOReader would exit, leaving curl running and the progress up.
         it("stops the download, and says something went wrong, when checking on it goes wrong", function()
             download()
             local widget = progress()
@@ -519,11 +577,11 @@ describe("Downloader", function()
             assert.is_true(helper.wasClosed(widget.container))
             assert.are.same({}, Downloader:getActiveDownloads())
             assert.is_truthy(helper.logged("err", "^checking on a download went wrong:.*unexpected"))
-            -- and isn't checked on again
+            -- It isn't checked on again.
             assert.are.equal(0, helper.tick())
         end)
 
-        -- e.g. offering to read it: the book did download
+        -- For example offering to read it. The book did download.
         it("doesn't say a download failed once it has finished, when what's done with the book goes wrong", function()
             Downloader:downloadBook(book, filepath, function(ok, err)
                 table.insert(results, { ok = ok, err = err })
@@ -537,19 +595,19 @@ describe("Downloader", function()
 
             assert.are.same({ { ok = true } }, results)
             assert.is_true(helper.exists(filepath))
-            -- once it was checked
+            -- Once it was checked.
             assert.is_truthy(helper.logged("err", "^checking a downloaded book went wrong:.*unexpected"))
         end)
 
-        -- which was only lost, as Trapper drops what goes wrong once its function has waited on something
+        -- Trapper drops errors once its function has waited on something, so this one would be lost.
         it("says something went wrong when starting the download goes wrong once its link is found", function()
             CurlUtil.createHeadersFile = function()
                 error("unexpected")
             end
             Downloader:downloadBook(book, filepath, onResult)
             local widget
-            local show = require("ui.downloadprogress").show
-            require("ui.downloadprogress").show = function(self)
+            local show = require("fetchanna.ui.downloadprogress").show
+            require("fetchanna.ui.downloadprogress").show = function(self)
                 widget = self
                 return show(self)
             end
@@ -561,7 +619,7 @@ describe("Downloader", function()
             assert.is_truthy(helper.logged("err", "^starting the download of Dune went wrong:.*unexpected"))
         end)
 
-        -- which failed every download on a device without curl, as a Kobo can be (#63)
+        -- Otherwise every download fails on a device without curl, as a Kobo can be (KindleFetch #63).
         it("downloads with KOReader's own HTTP where curl can't", function()
             can_fetch = false
             download()
@@ -571,11 +629,11 @@ describe("Downloader", function()
             helper.runScheduled()
             assert.are.same({ { ok = true } }, results)
             assert.are.equal(MB, #helper.readFile(filepath))
-            -- collecting its process once it's over
+            -- Its process is collected once it's over.
             assert.is_true(helper.state.subprocesses_collected[1000])
         end)
 
-        -- which could be another book entirely, with the same title
+        -- It could be another book entirely, with the same title.
         it("doesn't carry on from what's left of an earlier download of a book of the same name", function()
             helper.writeFile(filepath .. ".part", "another book")
             download()
@@ -596,7 +654,7 @@ describe("Downloader", function()
             assert.are.same({ { ok = true } }, results)
         end)
 
-        -- so that half a book is never left looking like a whole one
+        -- So half a book never looks like a whole one.
         it("downloads next to where the book is wanted, moving it there once it has all arrived", function()
             download()
             curlWrote(MB / 2)
@@ -612,7 +670,7 @@ describe("Downloader", function()
 
         it("fails when the book can't be moved to where it's wanted", function()
             download()
-            -- something else is in the way
+            -- Something else is in the way.
             helper.run("mkdir -p " .. helper.quote(filepath .. "/folder"))
             curlWrote(MB, 0)
             helper.runScheduled()
@@ -633,27 +691,9 @@ describe("Downloader", function()
             assert.are.equal("50% · 0.5 / 1.0 MB", widget.status_widget.text)
         end)
 
-        -- rather than in a notification of its own, from what looks them up
-        it("says while it's looking the mirrors up", function()
-            local HttpUtil = require("util.httputil")
-            local getBody = HttpUtil.getBody
-            local while_looking_up
-            HttpUtil.getBody = function(url)
-                if url:find("wikipedia.org", 1, true) then
-                    while_looking_up = progress().status_text
-                end
-                return getBody(url)
-            end
-            require("cache.urlcache"):clear()
-
-            download()
-            assert.are.equal("Looking up Library Genesis mirrors...", while_looking_up)
-            assert.are.same({}, helper.state.notifications)
-        end)
-
-        -- which can take a while
+        -- Not in a notification of its own.
         it("says what it's waiting for until the book starts to arrive", function()
-            local HttpUtil = require("util.httputil")
+            local HttpUtil = require("fetchanna.util.httputil")
             local getBody = HttpUtil.getBody
             local while_finding_the_link
             HttpUtil.getBody = function(url)
@@ -664,20 +704,19 @@ describe("Downloader", function()
             end
 
             download()
-            -- once the mirrors had been looked up, which one is being asked
-            assert.matches("^Trying libgen%.%S+ %(mirror 1 of %d+%)%.%.%.$", while_finding_the_link)
-            assert.are.equal("Waiting for Library Genesis...", progress().status_widget.text)
+            -- Once the mirrors are looked up, it says which one is being asked.
+            assert.are.equal("Trying books1.example (mirror 1 of 2)...", while_finding_the_link)
+            assert.are.equal("Waiting for Test Library...", progress().status_widget.text)
             helper.tick()
-            assert.are.equal("Waiting for Library Genesis...", progress().status_widget.text)
+            assert.are.equal("Waiting for Test Library...", progress().status_widget.text)
 
             curlWrote(MB / 2)
             helper.tick()
             assert.are.equal("50% · 0.5 / 1.0 MB", progress().status_widget.text)
         end)
 
-        -- rather than looking as if KOReader is stuck, as curl only tries again once it has stalled for a while
-        -- once nothing has arrived for 10 seconds, the 20 checks on it since, however the clock has changed (it can be
-        -- put back, or jump forward once the time is looked up)
+        -- Otherwise KOReader looks stuck, as curl only retries after a while. Stalled means 20 checks (10 seconds) with
+        -- nothing new, counted so clock changes don't matter.
         it("says when the download has stalled", function()
             helper.state.time = 1000
             download()
@@ -694,7 +733,7 @@ describe("Downloader", function()
             assert.are.equal("Stalled at 50%, retrying...", progress().status_widget.text)
             assert.are.equal(0.5, progress().bar_widget.percentage)
 
-            -- until more arrives
+            -- Until more arrives.
             curlWrote(MB * 3 / 4)
             helper.tick()
             assert.are.equal("75% · 0.8 / 1.0 MB", progress().status_widget.text)
@@ -710,13 +749,13 @@ describe("Downloader", function()
             assert.are.equal("Stalled at 0.5 MB, retrying...", progress().status_widget.text)
         end)
 
-        -- rather than asking for it before downloading, and waiting for the answer
+        -- No separate request for the size is made before downloading.
         it("works out the book's size from the headers curl notes down as the book starts to arrive", function()
             download()
             local widget = progress()
 
             helper.tick()
-            assert.are.equal("Waiting for Library Genesis...", widget.status_widget.text)
+            assert.are.equal("Waiting for Test Library...", widget.status_widget.text)
 
             helper.writeFile(
                 spawned[1].headers_file,
@@ -802,7 +841,7 @@ describe("Downloader", function()
                 helper.runScheduled()
 
                 assert.are.same({
-                    { ok = false, err = "Library Genesis sent a web page rather than the book, try again later" },
+                    { ok = false, err = "Test Library sent a web page rather than the book, try again later" },
                 }, results)
                 assert.is_false(helper.exists(filepath))
                 assert.is_false(helper.exists(filepath .. ".part"))
@@ -821,7 +860,7 @@ describe("Downloader", function()
                 assert.is_false(helper.exists(filepath))
             end)
 
-            -- which curl doesn't always notice
+            -- curl doesn't always notice.
             it("fails when less arrived than the site said it would send", function()
                 download()
                 curlWrote(MB / 2, 0)
@@ -846,7 +885,7 @@ describe("Downloader", function()
                 widget.cancel_button.callback()
                 helper.runScheduled()
                 assert.are.same({ { ok = false, err = "request cancelled" } }, results)
-                -- as curl had finished
+                -- curl had finished, so there's nothing to kill.
                 assert.are.same({}, killed)
                 assert.is_true(checks.closed)
                 assert.is_true(checks.steps < 10)
@@ -855,7 +894,7 @@ describe("Downloader", function()
                 assert.are.same({}, Downloader:getActiveDownloads())
             end)
 
-            -- as it has all arrived
+            -- It has all arrived.
             it("carries on checking the book while the device sleeps", function()
                 checkTakesSteps(3)
                 download()
@@ -883,7 +922,7 @@ describe("Downloader", function()
             assert.is_true(helper.wasClosed(widget.container))
             assert.are.same({}, Downloader:getActiveDownloads())
             assert.are.equal(MB, #helper.readFile(filepath))
-            -- for reading crash.log from a device
+            -- For reading crash.log from a device.
             assert.is_truthy(helper.logged("info", '^downloading "Dune" %(epub, .-, id %x+%) to '))
             assert.is_truthy(helper.logged("info", '^downloaded "Dune": ' .. MB .. " bytes in %d+s$"))
         end)
@@ -897,217 +936,7 @@ describe("Downloader", function()
             assert.are.same({ { ok = true } }, results)
         end)
 
-        -- rather than forgetting it, as it may only not have for a moment
-        it("tries the next mirror, and the one that didn't answer after the others from then on", function()
-            web.pages[adsUrl(mirrors[1])] = nil
-            hasBook(mirrors[2])
-
-            download()
-            assert.are.equal(getUrl(mirrors[2]), spawned[1].url)
-
-            local reordered = {}
-            for i = 2, #mirrors do
-                table.insert(reordered, mirrors[i])
-            end
-            table.insert(reordered, mirrors[1])
-            assert.are.same(reordered, UrlApi:getLibgenUrls())
-        end)
-
-        it("keeps mirrors that just do not have the book", function()
-            web.pages[adsUrl(mirrors[1])] = "<html>Not found</html>"
-            hasBook(mirrors[2])
-
-            download()
-            assert.are.equal(getUrl(mirrors[2]), spawned[1].url)
-            local reordered = { mirrors[2], mirrors[1] }
-            for i = 3, #mirrors do
-                table.insert(reordered, mirrors[i])
-            end
-            assert.are.same(reordered, UrlApi:getLibgenUrls())
-        end)
-
-        -- rather than asking the ones before it every time, which may be too busy for a while
-        it("asks the mirror that last gave a download link first", function()
-            web.pages[adsUrl(mirrors[1])] = "<html><body>Could not connect to the database 3306. User 'libgen_get' "
-                .. "has exceeded the 'max_user_connections' resource (current value: 80)</body></html>"
-            hasBook(mirrors[2])
-            download()
-            curlWrote(MB, 0)
-            helper.runScheduled()
-
-            web.fetched = {}
-            os.remove(filepath)
-            download()
-            assert.are.same({ adsUrl(mirrors[2]) }, web.fetched)
-            assert.are.equal(getUrl(mirrors[2]), spawned[2].url)
-        end)
-
-        it("scrapes the mirrors again when every mirror fails", function()
-            -- every mirror is down until they have been scraped again
-            web.pages[adsUrl(mirrors[1])] = function()
-                if web.scrapes > 1 then
-                    return fixtures.libgenAds(book.id)
-                end
-            end
-
-            download()
-            assert.are.equal(2, web.scrapes)
-            assert.are.equal(1, #spawned)
-            assert.are.same({}, results)
-            assert.are.equal(1, #Downloader:getActiveDownloads())
-
-            curlWrote(MB, 0)
-            helper.runScheduled()
-            assert.are.same({ { ok = true } }, results)
-        end)
-
-        it("fails when no mirror has the book", function()
-            for _, mirror in ipairs(mirrors) do
-                web.pages[adsUrl(mirror)] = "<html>Not found</html>"
-            end
-
-            download()
-            assert.are.same({ { ok = false, err = "no Library Genesis download link found" } }, results)
-            assert.are.same({}, Downloader:getActiveDownloads())
-            -- the mirrors answered, so they aren't looked up again
-            assert.are.equal(1, web.scrapes)
-        end)
-
-        -- as every mirror did at once while this was written, their shared database refusing connections
-        -- which was taken to be a mirror without the book, so the broken mirror stayed first, and the mirrors were
-        -- never looked up again
-        it("tries the next mirror when one answers with an error page, and forgets it", function()
-            web.pages[adsUrl(mirrors[1])] = function()
-                return "<html>502 Bad Gateway</html>", nil, 502
-            end
-            hasBook(mirrors[2])
-
-            download()
-            assert.are.equal(getUrl(mirrors[2]), spawned[1].url)
-            assert.is_false(UrlApi:getLibgenUrls()[1] == mirrors[1])
-        end)
-
-        it("looks the mirrors up again when every one answers with an error page", function()
-            for _, mirror in ipairs(mirrors) do
-                web.pages[adsUrl(mirror)] = function()
-                    return "<html>502 Bad Gateway</html>", nil, 502
-                end
-            end
-
-            download()
-            assert.are.equal(2, web.scrapes)
-            assert.are.same({
-                { ok = false, err = "Library Genesis answered with an error (HTTP 502), try again later" },
-            }, results)
-        end)
-
-        it("says when downloads are blocked by DDoS protection, keeping the mirrors", function()
-            for _, mirror in ipairs(mirrors) do
-                web.pages[adsUrl(mirror)] =
-                    "<html><head><title>DDoS-Guard</title></head><body>Checking your browser</body></html>"
-            end
-
-            download()
-            assert.are.same({
-                { ok = false, err = "Library Genesis is blocking automated downloads right now, try again later" },
-            }, results)
-            assert.are.same(mirrors, UrlApi:getLibgenUrls())
-        end)
-
-        -- which is passed on to curl, as covers' and Z-Library's links are only once they are
-        it("won't use a download link that isn't just an address", function()
-            for _, mirror in ipairs(mirrors) do
-                web.pages[adsUrl(mirror)] = '<a href="get.php?md5=' .. book.id .. '&key=A B">GET</a>'
-            end
-
-            download()
-            assert.are.equal(0, #spawned)
-            assert.are.same({ { ok = false, err = "no Library Genesis download link found" } }, results)
-            assert.is_truthy(helper.logged("warn", "^left out a download link from .* that isn't just an address"))
-        end)
-
-        it("says when Library Genesis is too busy to send the book", function()
-            local busy_page = "<html><body>Could not connect to the database 3306. User 'libgen_get' has exceeded the "
-                .. "'max_user_connections' resource (current value: 80) <a href=''>Report an error</a>.</body></html>"
-            for _, mirror in ipairs(mirrors) do
-                web.pages[adsUrl(mirror)] = busy_page
-            end
-
-            download()
-            assert.are.same({
-                {
-                    ok = false,
-                    err = "Library Genesis is too busy to send books right now, try again in a few minutes",
-                },
-            }, results)
-            -- the mirrors themselves are fine
-            assert.are.same(mirrors, UrlApi:getLibgenUrls())
-            assert.are.equal(1, web.scrapes)
-        end)
-
-        it("downloads from a mirror that isn't too busy", function()
-            web.pages[adsUrl(mirrors[1])] = "<html>Could not connect to the database 3306.</html>"
-            hasBook(mirrors[2])
-
-            download()
-            assert.are.equal(getUrl(mirrors[2]), spawned[1].url)
-        end)
-
-        -- as when the network is blocking them, as many internet providers do (#55)
-        it("says when none of the mirrors can be found on this network", function()
-            for _, mirror in ipairs(mirrors) do
-                web.pages[adsUrl(mirror)] = function()
-                    return nil, "could not resolve host"
-                end
-            end
-
-            download()
-            assert.are.same({
-                {
-                    ok = false,
-                    err = "none of Library Genesis' sites can be found on this network, which may be blocking "
-                        .. "them. Try another Wi-Fi network or DNS server",
-                },
-            }, results)
-            assert.are.equal(2, web.scrapes)
-        end)
-
-        it("says there's no internet connection when neither the mirrors nor Wikipedia answer", function()
-            for _, mirror in ipairs(mirrors) do
-                web.pages[adsUrl(mirror)] = nil
-            end
-            web.wikipedia_down = true
-
-            download()
-            assert.are.same({ { ok = false, err = "no internet connection" } }, results)
-            assert.is_true(helper.wasClosed(helper.lastShown()))
-        end)
-
-        -- e.g. where Wikipedia is blocked
-        it("downloads from the mirrors known when the plugin was written when Wikipedia can't be reached", function()
-            for _, mirror in ipairs(mirrors) do
-                web.pages[adsUrl(mirror)] = nil
-            end
-            hasBook("https://libgen.vg")
-            web.wikipedia_down = true
-
-            download()
-            assert.are.equal(getUrl("https://libgen.vg"), spawned[1].url)
-        end)
-
-        -- rather than forgetting every mirror while offline
-        it("keeps the mirrors when nothing answers", function()
-            UrlApi:getLibgenUrls()
-            for _, mirror in ipairs(mirrors) do
-                web.pages[adsUrl(mirror)] = nil
-            end
-            web.wikipedia_down = true
-
-            download()
-            assert.are.same({ { ok = false, err = "no internet connection" } }, results)
-            assert.are.same(mirrors, UrlApi:getLibgenUrls())
-        end)
-
+        -- Rather than failing, as the device may only be offline for a moment.
         it("turns on wifi first when offline, then downloads once connected", function()
             hasBook(mirrors[1])
             helper.stubs.network.connected = false
@@ -1139,7 +968,7 @@ describe("Downloader", function()
             assert.are.same({ { ok = false, err = "HTTP error response" } }, results)
             assert.is_false(helper.exists(filepath))
             assert.is_false(helper.exists(filepath .. ".part"))
-            -- with what's needed to work out why from crash.log
+            -- With what's needed to work out why from crash.log.
             assert.matches(
                 'download of "Dune" from [%w%.]+ failed after %d+s: curl exit code 22 %(HTTP error '
                     .. "response%), "
@@ -1149,7 +978,7 @@ describe("Downloader", function()
             )
         end)
 
-        -- rather than that the TLS connection failed, which doesn't say what to do about it
+        -- "TLS connection failed" alone doesn't say what to do about it.
         it("says when a Kindle's curl is too old to download the book, and how to update it", function()
             helper.stubCommand("curl --version", "curl 7.68.0 (arm-kindle-linux-gnueabi) libcurl/7.68.0\n")
             CurlUtil.forgetVersion()
@@ -1161,8 +990,8 @@ describe("Downloader", function()
             assert.matches("Check for updates", CurlUtil.OUTDATED_ERROR, 1, true)
         end)
 
-        -- as happened while this was written: the mirrors linked to the book, then answered with an error
-        it("says Library Genesis is too busy when its servers fail to send the book", function()
+        -- The mirrors can link to the book, then answer with an error.
+        it("says Test Library is too busy when its servers fail to send the book", function()
             download()
             helper.writeFile(spawned[1].headers_file, "HTTP/2 503 \r\ncontent-length: 212\r\n\r\n")
             helper.writeFile(spawned[1].exit_file, "22")
@@ -1171,13 +1000,13 @@ describe("Downloader", function()
             assert.are.same({
                 {
                     ok = false,
-                    err = "Library Genesis is too busy to send books right now, try again in a few minutes",
+                    err = "Test Library is too busy to send books right now, try again in a few minutes",
                 },
             }, results)
             assert.matches("curl exit code 22 %(HTTP error response, HTTP 503%)", helper.logged("warn", "failed after"))
         end)
 
-        it("says which HTTP error stopped the download when it isn't Library Genesis' servers failing", function()
+        it("says which HTTP error stopped the download when it isn't Test Library' servers failing", function()
             download()
             helper.writeFile(spawned[1].headers_file, "HTTP/2 404 \r\ncontent-length: 9\r\n\r\n")
             helper.writeFile(spawned[1].exit_file, "22")
@@ -1194,7 +1023,7 @@ describe("Downloader", function()
             assert.are.same({ { ok = false, err = "download produced empty file" } }, results)
         end)
 
-        -- curl can finish just after its exit code was checked, before checking whether it's running
+        -- curl can finish after its exit code was checked but before the check that it's running.
         it("finishes when curl exits between checks", function()
             download()
             CurlUtil.isPidRunning = function()
@@ -1220,7 +1049,7 @@ describe("Downloader", function()
                 return nil, "could not start curl"
             end
 
-            -- the site can't carry on from where it stopped
+            -- The site can't carry on from where it stopped.
             curlWrote(MB / 2, 33)
             helper.runScheduled()
             assert.are.same({ { ok = false, err = "could not start curl" } }, results)
@@ -1240,124 +1069,78 @@ describe("Downloader", function()
         end)
     end)
 
-    -- the same way as from Library Genesis, but with the link looked up on the site the book was found on
-    describe("a book found on Internet Archive", function()
+    -- As from Test Library, but the link is looked up on the site the book was found on.
+    describe("a book whose site lists its file's md5 and size", function()
+        local LISTED = "0123456789ABCDEF0123456789ABCDEF"
+
         before_each(function()
-            book = {
-                source = "archive",
-                id = "archive_emma00aust",
-                identifier = "emma00aust",
-                title = "Emma",
-                display_title = "Emma",
-                file_type = "epub",
-            }
-            web.pages["https://archive.org/metadata/emma00aust/files"] = fixtures.archiveFiles({
-                { name = "emma00aust.epub", format = "EPUB" },
-            })
+            listed_by_site = { md5 = LISTED, bytes = tostring(2 * MB) }
+            remote_size = 2 * MB
         end)
 
-        it("downloads it from there, saying so while it waits", function()
+        it("checks its md5", function()
+            arrived_md5 = LISTED:lower()
             download()
-
-            assert.are.equal("https://archive.org/download/emma00aust/emma00aust.epub", spawned[1].url)
-            assert.are.equal("Waiting for Internet Archive...", progress().status_widget.text)
-            curlWrote(MB, 0)
+            curlWrote(2 * MB, 0)
             helper.runScheduled()
             assert.are.same({ { ok = true } }, results)
         end)
 
-        describe("checking the book is the one it lists", function()
-            local LISTED = "0123456789ABCDEF0123456789ABCDEF"
-
-            before_each(function()
-                web.pages["https://archive.org/metadata/emma00aust/files"] = fixtures.archiveFiles({
-                    { name = "emma00aust.epub", format = "EPUB", md5 = LISTED, size = tostring(2 * MB) },
-                })
-                remote_size = 2 * MB
-            end)
-
-            it("checks its md5", function()
-                arrived_md5 = LISTED:lower()
-                download()
-                curlWrote(2 * MB, 0)
-                helper.runScheduled()
-                assert.are.same({ { ok = true } }, results)
-            end)
-
-            it("fails when its md5 isn't the one listed", function()
-                arrived_md5 = string.rep("0", 32)
-                download()
-                curlWrote(2 * MB, 0)
-                helper.runScheduled()
-                assert.are.same({
-                    { ok = false, err = "the file that downloaded doesn't match the one listed, and may be damaged" },
-                }, results)
-            end)
-
-            -- however big the site said it was when sending it
-            it("fails when it's smaller than listed", function()
-                remote_size = MB
-                download()
-                curlWrote(MB, 0)
-                helper.runScheduled()
-                assert.are.same({ { ok = false, err = "partial file transfer (download interrupted)" } }, results)
-            end)
-        end)
-
-        it("says Internet Archive is too busy when its servers fail to send the book", function()
+        it("fails when its md5 isn't the one listed", function()
+            arrived_md5 = string.rep("0", 32)
             download()
-            helper.writeFile(spawned[1].headers_file, "HTTP/2 503 \r\ncontent-length: 212\r\n\r\n")
-            helper.writeFile(spawned[1].exit_file, "22")
+            curlWrote(2 * MB, 0)
             helper.runScheduled()
-
             assert.are.same({
-                {
-                    ok = false,
-                    err = "Internet Archive is too busy to send books right now, try again in a few minutes",
-                },
+                { ok = false, err = "the file that downloaded doesn't match the one listed, and may be damaged" },
             }, results)
         end)
 
-        it("says why it couldn't find the link, without looking it up again", function()
-            web.pages["https://archive.org/metadata/emma00aust/files"] = "{}"
+        -- However big the site said it was when sending it.
+        it("fails when it's smaller than listed", function()
+            remote_size = MB
             download()
+            curlWrote(MB, 0)
+            helper.runScheduled()
+            assert.are.same({ { ok = false, err = "partial file transfer (download interrupted)" } }, results)
+        end)
 
-            assert.are.same({ { ok = false, err = "Internet Archive no longer has this book as EPUB" } }, results)
-            assert.are.equal(0, #spawned)
-            assert.are.equal(1, #web.fetched)
+        it("doesn't check an md5 that isn't one", function()
+            listed_by_site = { md5 = "not an md5" }
+            local checks = checkTakesSteps(1)
+            download()
+            curlWrote(2 * MB, 0)
+            helper.runScheduled()
+            assert.are.same({ { ok = true } }, results)
+            assert.are.equal(0, checks.steps)
         end)
     end)
 
-    -- whose download links each go to one of its servers, some of which can fail for a while
-    describe("a book found on Z-Library", function()
+    -- Some of its servers can fail for a while.
+    describe("a book from a site whose links each go to one of its servers", function()
         local links
 
-        -- curl being answered with the HTTP status, and giving up
+        -- Simulates curl being answered with the HTTP status and giving up.
         local function serverAnswered(status)
             helper.writeFile(spawned[#spawned].headers_file, "HTTP/2 " .. status .. " \r\ncontent-length: 0\r\n\r\n")
             helper.writeFile(spawned[#spawned].exit_file, "22")
         end
 
         before_each(function()
-            local account = { email = "reader@example.com", user_id = 42, user_key = "abc" }
-            require("settings.settings"):setZlibAccount(account)
+            local md5 = "0123456789abcdef0123456789abcdef"
             book = {
-                source = "zlib",
-                id = "zlib_7",
-                zlib_id = 7,
-                hash = "abc123",
+                source = "annas",
+                id = md5,
+                md5 = md5,
                 title = "1984",
                 display_title = "1984",
                 file_type = "epub",
             }
-            -- Z-Library's address, as if looked up already (see UrlApi)
-            require("cache.urlcache"):set({ "https://z-lib.example" }, "zlib")
-            web.pages["https://z-lib.example/eapi/user/profile"] =
-                '{"success":1,"user":{"downloads_today":1,"downloads_limit":10}}'
+            -- As Anna's Archive's member API gives them (see AnnasSearch), each to one download server.
             links = 0
-            web.pages["https://z-lib.example/eapi/book/7/abc123/file"] = function()
+            require("fetchanna.api.sources").annas.findDownloadLink = function()
                 links = links + 1
-                return string.format('{"success":1,"file":{"downloadLink":"https://dl%d.example/1984.epub"}}', links)
+                return string.format("https://dl%d.example/1984.epub", links), nil, false, { md5 = md5 }
             end
         end)
 
@@ -1371,7 +1154,7 @@ describe("Downloader", function()
             assert.are.equal("https://dl2.example/1984.epub", spawned[2].url)
             assert.are.same({}, results)
             assert.is_truthy(helper.logged("info", "^asking for another download link"))
-            assert.are.equal("Waiting for Z-Library...", progress().status_widget.text)
+            assert.are.equal("Waiting for Anna's Archive...", progress().status_widget.text)
 
             curlWrote(MB, 0)
             helper.runScheduled()
@@ -1394,7 +1177,7 @@ describe("Downloader", function()
             assert.are.same({ { ok = true } }, results)
         end)
 
-        -- which can count as another of the few downloads Z-Library allows a day
+        -- Another link can count as another fast download, except for a book just downloaded.
         it("doesn't ask for another link when Wi-Fi went off, carrying on with the same one once it's back", function()
             download()
             require("ui/network/manager").connected = false
@@ -1408,7 +1191,7 @@ describe("Downloader", function()
             assert.are.equal("https://dl1.example/1984.epub", spawned[2].url)
         end)
 
-        -- rather than showing again, as a new download's would
+        -- A new download's progress would show again. This one stays hidden.
         it("keeps a hidden download's progress hidden while it asks for another link", function()
             download()
             progress().hide_button.callback()
@@ -1419,7 +1202,7 @@ describe("Downloader", function()
             assert.are.equal(2, #spawned)
             assert.is_false(progress().is_visible)
             assert.are.equal(shown, #helper.state.shown)
-            -- and can still be shown again
+            -- It can still be shown again.
             assert.is_true(Downloader:showDownload(book.id))
             assert.are.equal(progress().container, helper.lastShown())
         end)
@@ -1441,28 +1224,150 @@ describe("Downloader", function()
 
             assert.are.equal(2, links)
             assert.are.same({
-                { ok = false, err = "Z-Library is too busy to send books right now, try again in a few minutes" },
+                { ok = false, err = "Anna's Archive is too busy to send books right now, try again in a few minutes" },
             }, results)
         end)
 
-        -- which another link to it wouldn't change
-        it("doesn't ask for another link when the book isn't there", function()
+        -- Another link wouldn't change that.
+        it("doesn't ask for another link when the server turns down how it was asked", function()
             download()
-            serverAnswered(404)
+            serverAnswered(400)
             helper.runScheduled()
 
             assert.are.equal(1, links)
-            assert.are.same({ { ok = false, err = "HTTP error response (HTTP 404)" } }, results)
+            assert.are.same({ { ok = false, err = "HTTP error response (HTTP 400)" } }, results)
         end)
     end)
 
-    -- which failed the download as if the site had, removing what had arrived, and for Z-Library, asking for another
-    -- link, which can count as another download
+    describe("a book found on Anna's Archive", function()
+        local MD5 = "0123456789abcdef0123456789abcdef"
+        local lookups
+
+        -- Simulates curl being answered with the HTTP status and giving up.
+        local function serverAnswered(status)
+            helper.writeFile(spawned[#spawned].headers_file, "HTTP/2 " .. status .. " \r\ncontent-length: 0\r\n\r\n")
+            helper.writeFile(spawned[#spawned].exit_file, "22")
+        end
+
+        before_each(function()
+            book = {
+                source = "annas",
+                id = MD5,
+                md5 = MD5,
+                title = "Emma",
+                display_title = "Emma",
+                file_type = "epub",
+            }
+            lookups = {}
+            -- As the member API gives them (see AnnasSearch): a signed link to a download server.
+            require("fetchanna.api.sources").annas.findDownloadLink = function(found, retrying, failed_url)
+                table.insert(lookups, { md5 = found.md5, retrying = retrying, failed_url = failed_url })
+                return string.format("https://dl%d.example/d3/y/1763000000/signature/%s.epub", #lookups, MD5),
+                    nil,
+                    false,
+                    { md5 = MD5 }
+            end
+        end)
+
+        it("gives curl its signed link as the secret it is, and checks the md5 of what arrives", function()
+            local checks = checkTakesSteps(1)
+            download()
+            assert.is_true(spawned[1].sensitive)
+            assert.is_nil(helper.allLogged():find("signature", 1, true))
+            curlWrote(MB, 0)
+            helper.runScheduled()
+            assert.are.same({ { ok = true } }, results)
+            assert.are.equal(1, checks.steps)
+        end)
+
+        -- A signed link expires after two hours, and asking again for the same book is free.
+        it("asks for another link once when the server no longer takes the one it has", function()
+            download()
+            serverAnswered(403)
+            helper.tick()
+
+            assert.are.equal(2, #lookups)
+            assert.are.same({ md5 = MD5, retrying = true, failed_url = spawned[1].url }, lookups[2])
+            assert.are.equal("https://dl2.example/d3/y/1763000000/signature/" .. MD5 .. ".epub", spawned[2].url)
+            assert.is_truthy(helper.logged("info", "^asking for another download link, .* no longer takes it$"))
+
+            curlWrote(MB, 0)
+            helper.runScheduled()
+            assert.are.same({ { ok = true } }, results)
+        end)
+
+        it("gives up once the second link isn't taken either", function()
+            download()
+            serverAnswered(410)
+            helper.tick()
+            serverAnswered(403)
+            helper.runScheduled()
+
+            assert.are.equal(2, #lookups)
+            assert.are.same({ { ok = false, err = "HTTP error response (HTTP 403)" } }, results)
+        end)
+
+        -- The lookup may already have counted as a fast download, and tried every site.
+        it("doesn't ask for a link again straight away when none could be had", function()
+            require("fetchanna.api.sources").annas.findDownloadLink = function()
+                table.insert(lookups, {})
+                return nil, "Anna's Archive took too long", false
+            end
+            download()
+            helper.runScheduled()
+            assert.are.equal(1, #lookups)
+            assert.are.same({ { ok = false, err = "Anna's Archive took too long" } }, results)
+        end)
+    end)
+
+    describe("a book that won't fit on the device", function()
+        it("stops downloading it as soon as its size is known, saying how much more room it needs", function()
+            helper.stubs.util.diskUsage = function()
+                return { total = 8 * MB, used = 7 * MB, available = MB }
+            end
+            remote_size = 3 * MB
+            download()
+            curlWrote(MB / 2)
+            helper.tick()
+
+            assert.are.same({ 1000 }, killed)
+            assert.are.same({
+                { ok = false, err = "there isn't room for the book on the device: 2.5 MB more is needed" },
+            }, results)
+            assert.is_false(helper.exists(filepath .. ".part"))
+            assert.are.same({}, Downloader:getActiveDownloads())
+        end)
+
+        it("downloads it where it fits, or the room left can't be told", function()
+            helper.stubs.util.diskUsage = function()
+                return { total = 8 * MB, used = 4 * MB, available = 4 * MB }
+            end
+            download()
+            curlWrote(MB / 2)
+            helper.tick()
+            assert.are.same({}, killed)
+
+            assert.is_nil(Downloader.lackOfRoom(filepath, MB))
+            assert.are.equal(2 * MB, Downloader.lackOfRoom(filepath, 5 * MB))
+            helper.stubs.util.diskUsage = function()
+                return { total = nil, used = nil, available = nil }
+            end
+            assert.is_nil(Downloader.lackOfRoom(filepath, 5 * MB))
+            helper.stubs.util.diskUsage = function()
+                error("df failed")
+            end
+            assert.is_nil(Downloader.lackOfRoom(filepath, 5 * MB))
+        end)
+    end)
+
+    -- Treated as the site's failure, this would discard what had arrived and ask for another link, which can count as
+    -- another fast download.
     describe("when Wi-Fi goes off, or the device goes to sleep", function()
         local network
 
         before_each(function()
             network = require("ui/network/manager")
+            remote_etag = '"v1"'
             download()
             curlWrote(MB / 2)
             helper.tick()
@@ -1480,17 +1385,20 @@ describe("Downloader", function()
             assert.are.equal("Waiting for Wi-Fi...", progressText())
             assert.are.equal(MB / 2, #helper.readFile(filepath .. ".part"))
             assert.are.same({}, killed)
-            -- still waiting
+            -- Still waiting.
             helper.tick()
             assert.are.equal(1, #spawned)
 
-            -- found to be back, as KOReader doesn't say so on every device
+            -- Found by checking, as KOReader doesn't announce it on every device.
             network.connected = true
             helper.tick()
             assert.are.equal(2, #spawned)
             assert.are.equal(spawned[1].url, spawned[2].url)
             assert.is_true(spawned[2].resume)
-            assert.are.equal("Waiting for Library Genesis...", progressText())
+            -- Resumed only if the file is still the one that had arrived partway (If-Range).
+            assert.are.equal('"v1"', spawned[2].if_range)
+            assert.are.equal(MB / 2, #helper.readFile(filepath .. ".part"))
+            assert.are.equal("Waiting for Test Library...", progressText())
 
             curlWrote(MB, 0)
             helper.runScheduled()
@@ -1514,7 +1422,7 @@ describe("Downloader", function()
             Downloader:onSuspend()
             assert.are.same({ 1000 }, killed)
             assert.is_true(helper.exists(filepath .. ".part"))
-            -- not while it's asleep, whatever it says about Wi-Fi
+            -- Not while it's asleep, whatever it says about Wi-Fi.
             Downloader:onNetworkConnected()
             helper.tick()
             assert.are.equal(1, #spawned)
@@ -1534,6 +1442,22 @@ describe("Downloader", function()
             network.connected = true
             Downloader:onNetworkConnected()
             assert.are.equal(2, #spawned)
+        end)
+
+        -- Without a validator, what arrived can't be shown to be part of the same file.
+        it("starts again from the beginning where the server didn't say what shows the file is the same", function()
+            helper.writeFile(spawned[1].headers_file, "HTTP/2 200\r\ncontent-length: " .. MB .. "\r\n\r\n")
+            Downloader:onNetworkDisconnected()
+            Downloader:onNetworkConnected()
+
+            assert.are.equal(2, #spawned)
+            assert.is_nil(spawned[2].if_range)
+            assert.is_false(helper.exists(filepath .. ".part"))
+            assert.is_truthy(helper.logged("info", "^starting it again from the beginning"))
+
+            curlWrote(MB, 0)
+            helper.runScheduled()
+            assert.are.same({ { ok = true } }, results)
         end)
 
         it("can be cancelled while it waits", function()
@@ -1556,7 +1480,7 @@ describe("Downloader", function()
         end)
     end)
 
-    -- as going to sleep turns Wi-Fi off, which stopped the download
+    -- Going to sleep turns Wi-Fi off, which would stop the download.
     describe("keeping the device awake", function()
         local PluginShare
 
@@ -1582,7 +1506,7 @@ describe("Downloader", function()
             download()
             local first = book
             book = {
-                source = "libgen",
+                source = "test",
                 id = fixtures.DUNE.md5:gsub("^.", "f"),
                 title = "Dune Messiah",
                 file_type = "epub",
@@ -1607,7 +1531,7 @@ describe("Downloader", function()
             helper.runScheduled()
             assert.is_false(PluginShare.pause_auto_suspend)
 
-            -- e.g. AutoTurn, which was turned off meanwhile
+            -- For example AutoTurn, turned off meanwhile.
             PluginShare.pause_auto_suspend = nil
             download()
             PluginShare.pause_auto_suspend = false
@@ -1632,19 +1556,19 @@ describe("Downloader", function()
         end)
 
         it("letting it sleep again however downloads end", function()
-            -- no link
+            -- No link.
             web.pages[adsUrl(mirrors[1])] = "<html>nothing</html>"
             download()
             assert.are.equal(0, helper.state.standby_prevented)
 
-            -- cancelled
+            -- Cancelled.
             hasBook(mirrors[1])
             download()
             progress().cancel_button.callback()
             helper.runScheduled()
             assert.are.equal(0, helper.state.standby_prevented)
 
-            -- all cancelled at once, as when KOReader closes
+            -- All cancelled at once, as when KOReader closes.
             download()
             Downloader:cancelAllDownloads()
             assert.are.equal(0, helper.state.standby_prevented)
@@ -1664,7 +1588,7 @@ describe("Downloader", function()
             assert.are.equal(progress(), downloads[1].widget)
         end)
 
-        -- even once the clock has been put back, as an e-reader's can be when its battery runs flat
+        -- Even once the clock is put back, as when an e-reader's battery runs flat.
         it("are listed in the order they were started", function()
             helper.state.time = 3000
             for i, title in ipairs({ "Zebra", "Apple" }) do
@@ -1683,7 +1607,7 @@ describe("Downloader", function()
             assert.are.same({ "Zebra", "Apple", "Dune" }, titles)
         end)
 
-        -- e.g. from the Downloads entry in KindleFetch's menu
+        -- For example from the Downloads entry in FetchAnna's menu.
         it("can have their progress shown again once hidden", function()
             download()
             local widget = progress()
@@ -1693,7 +1617,7 @@ describe("Downloader", function()
             assert.is_true(widget.is_visible)
             assert.are.equal(widget.container, helper.lastShown())
 
-            -- and nothing happens when it's showing already
+            -- Nothing happens when it's showing already.
             local shown = #helper.state.shown
             assert.is_true(Downloader:showDownload(book.id))
             assert.are.equal(shown, #helper.state.shown)

@@ -15,7 +15,7 @@ H.books_dir = H.work_dir .. "/books"
 H.profile_name = os.getenv("E2E_PROFILE")
 H.profile = require("profiles")[H.profile_name]
 
--- run whatever KOReader has scheduled that is due, and redraw the screen
+-- Runs whatever KOReader has scheduled that's due, and redraws the screen.
 function H.pump()
     UIManager:setInputTimeout(0)
     UIManager:handleInput()
@@ -25,7 +25,7 @@ function H.sleep(seconds)
     ffiUtil.usleep(math.floor(seconds * 1000000))
 end
 
--- keep KOReader running until check() returns something, which is then returned
+-- Keeps KOReader running until check() returns something, which is then returned.
 function H.waitFor(what, timeout, check)
     local deadline = os.time() + timeout
     while true do
@@ -41,7 +41,7 @@ function H.waitFor(what, timeout, check)
     end
 end
 
--- like waitFor, but returns nil rather than failing when the time is up
+-- Like waitFor, but returns nil rather than failing when the time is up.
 function H.poll(timeout, check)
     local ok, result = pcall(H.waitFor, "", timeout, check)
     return ok and result or nil
@@ -53,7 +53,7 @@ function H.eq(expected, actual, what)
     end
 end
 
--- widgets on screen, from the top one down
+-- Returns the widgets on screen, from the top one down.
 function H.windows()
     local windows = {}
     for i = #UIManager._window_stack, 1, -1 do
@@ -71,7 +71,7 @@ function H.isShown(widget)
     return false
 end
 
--- skip references back to the rest of KOReader, so searches stay within the widget
+-- References back to the rest of KOReader are skipped, so searches stay within the widget.
 local SKIP_FIELDS = {
     ui = true,
     document = true,
@@ -79,7 +79,7 @@ local SKIP_FIELDS = {
     show_parent = true,
 }
 
--- the first widget on screen (or inside root) that predicate accepts, searching the top window first
+-- Returns the first widget on screen (or inside root) that predicate accepts, searching the top window first.
 function H.find(predicate, root)
     local visited = {}
     local function search(widget, depth)
@@ -118,7 +118,7 @@ function H.findButton(text, root)
     end, root)
 end
 
--- tap the screen at x, y, as a finger would
+-- Taps the screen at x, y, as a finger would.
 function H.tapAt(x, y)
     UIManager:sendEvent(Event:new("Gesture", {
         ges = "tap",
@@ -133,7 +133,7 @@ function H.tapAt(x, y)
     H.pump()
 end
 
--- tap the middle of a widget
+-- Taps the middle of a widget.
 function H.tap(widget)
     assert(widget, "nothing to tap")
     local dimen = widget.dimen
@@ -146,7 +146,7 @@ function H.tapButton(text, root)
     H.tap(assert(H.findButton(text, root), "no button labelled " .. text))
 end
 
--- follow a path through KOReader's main menu, e.g. {"Kindle Fetch", "Settings"}
+-- Follows a path through KOReader's main menu, e.g. {"FetchAnna", "Settings"}.
 function H.openMainMenu(path)
     local ui = H.fileManager()
     ui.menu:onShowMenu()
@@ -161,7 +161,7 @@ function H.openMainMenu(path)
         return item.text or (item.text_func and item.text_func())
     end
 
-    -- the tab with the first entry
+    -- The tab with the first entry.
     for tab_num, tab in ipairs(touch_menu.tab_item_table) do
         for _, item in ipairs(tab) do
             if itemText(item) == path[1] then
@@ -179,7 +179,7 @@ function H.openMainMenu(path)
             end, touch_menu)
         end
 
-        -- turn the menu's pages until the entry is showing, as a user would
+        -- Turns the menu's pages until the entry is showing, as a user would.
         local menu_item = H.poll(3, findItem)
         for _ = 1, 10 do
             if menu_item then
@@ -193,88 +193,7 @@ function H.openMainMenu(path)
     end
 end
 
--- what to search for: a popular book, mostly in other languages on the first pages of Library Genesis' results
-H.SEARCH_QUERY = "harry potter and the chamber of secrets"
--- a public domain book to search for and download, so the tests don't download books under copyright
-H.BOOK_QUERY = "pride and prejudice austen"
-
--- whether a book is Jane Austen's own Pride and Prejudice, rather than one of the newer books based on it
-function H.isPublicDomain(book)
-    local title = book.title:lower():gsub("&", "and"):gsub("%s+", " ")
-    local authors = (book.authors or ""):lower()
-    return title == "pride and prejudice" and (authors == "austen, jane" or authors == "jane austen")
-end
-
--- the sites, by the names they're said with, as Kindle Fetch knows them (see Sources)
-H.SITES = {
-    ["Library Genesis"] = "libgen",
-    ["Internet Archive"] = "archive",
-    ["Project Gutenberg"] = "gutenberg",
-    ["Z-Library"] = "zlib",
-}
-
--- tick the sites to search (by name: Library Genesis, unless given, or a list of them), as the search box's Sites menu
--- does
-function H.tickSites(sites)
-    sites = type(sites) == "table" and sites or { sites or "Library Genesis" }
-    local sources = {}
-    for _, site in ipairs(sites) do
-        table.insert(sources, (assert(H.SITES[site], "no site " .. tostring(site))))
-    end
-    assert(require("settings.settings"):setSearchSources(sources))
-end
-
--- open the search dialog for the sites (see tickSites), type query and tap Search, returning KindleFetch and the
--- dialog
-function H.startSearch(query, sites)
-    H.tickSites(sites)
-    H.openMainMenu({ "Kindle Fetch", "Search" })
-    local plugin = H.plugin()
-    local dialog = H.waitFor("the search dialog", 10, function()
-        return plugin.search_box and H.isShown(plugin.search_box) and plugin.search_box
-    end)
-    dialog:setInputText(query)
-
-    H.tapButton("Search", dialog)
-    return plugin, dialog
-end
-
--- search the sites (see tickSites) for query, returning the menu of books once they're found
-function H.search(query, sites)
-    local plugin = H.startSearch(query, sites)
-    return H.waitFor("search results", 120, function()
-        local failure = H.errorShown() or H.messageSaying("found no books for") or H.messageSaying("but none in the")
-        if failure then
-            error("search failed: " .. failure, 0)
-        end
-        return plugin.books_menu and H.isShown(plugin.books_menu) and plugin.books_menu
-    end)
-end
-
--- search, tapping "Load more" until a book matching predicate is found, returning the results menu
-function H.searchUntil(query, predicate, max_pages)
-    local menu = H.search(query)
-    for _ = 2, max_pages or 3 do
-        for _, book in ipairs(H.books(menu)) do
-            if predicate(book) then
-                return menu
-            end
-        end
-        local count = #H.books(menu)
-        H.tapMenuEntry(menu, function(item)
-            return item.text == "Load more"
-        end)
-        H.waitFor("more books", 120, function()
-            local failure = H.errorShown()
-            if failure then
-                error(failure, 0)
-            end
-            return #H.books(menu) > count
-        end)
-    end
-    return menu
-end
-
+-- Returns the books in a menu of results.
 function H.books(menu)
     local books = {}
     for _, item in ipairs(menu.item_table) do
@@ -285,7 +204,7 @@ function H.books(menu)
     return books
 end
 
--- turn to the page with the book (or other entry) and tap it
+-- Turns to the page with the book (or other entry) and taps it.
 function H.tapMenuEntry(menu, predicate)
     local index
     for i, item in ipairs(menu.item_table) do
@@ -319,19 +238,19 @@ function H.tapBook(menu, book)
     end)
 end
 
--- remove a downloaded book, and what KOReader noted down about it while it was read
+-- Removes a downloaded book, and what KOReader noted down about it while it was read.
 function H.removeBook(path)
     os.remove(path)
     local sidecar = path:gsub("%.[^./]+$", ".sdr")
     os.execute("rm -rf '" .. sidecar:gsub("'", "'\\''") .. "'")
 end
 
--- close everything but the file manager
+-- Closes everything but the file manager.
 function H.closeAll()
     local FileManager = require("apps/filemanager/filemanager")
     local ReaderUI = require("apps/reader/readerui")
     if ReaderUI.instance then
-        -- close the book and go back to the file manager, as the home button does
+        -- Closes the book and goes back to the file manager, as the home button does.
         ReaderUI.instance:onHome()
         H.fileManager()
     end
@@ -343,20 +262,10 @@ function H.closeAll()
     H.pump()
 end
 
--- empty KindleFetch's caches, so each test finds everything afresh rather than relying on what earlier tests found
+-- Empties FetchAnna's caches, so each test finds everything afresh.
 function H.clearCaches()
-    require("cache.searchcache"):clear()
-    require("cache.urlcache"):clear()
-    require("cache.covercache"):clear()
-end
-
--- put mirrors that don't work before the real ones: one that doesn't exist, and one that answers without any books.
--- returns them
-function H.breakMirrors()
-    local mirrors = assert(require("api.urlapi"):getLibgenUrls(), "couldn't look up the mirrors on Wikipedia")
-    local broken = { "https://libgen.invalid", "https://example.com" }
-    require("cache.urlcache"):set({ broken[1], broken[2], unpack(mirrors) }, "libgen")
-    return broken
+    require("fetchanna.cache.searchcache"):clear()
+    require("fetchanna.cache.covercache"):clear()
 end
 
 function H.fileManager()
@@ -365,15 +274,15 @@ function H.fileManager()
     end)
 end
 
--- KindleFetch's instance for the file manager or book being shown
+-- Returns FetchAnna's instance for the file manager or book being shown.
 function H.plugin()
     local ReaderUI = require("apps/reader/readerui")
     local FileManager = require("apps/filemanager/filemanager")
     local ui = ReaderUI.instance or FileManager.instance
-    return ui and ui.kindlefetch
+    return ui and ui.fetchanna
 end
 
--- every notification shown, oldest first
+-- Every notification shown, oldest first.
 H.notifications = {}
 local Notification = require("ui/widget/notification")
 local notify = Notification.notify
@@ -382,7 +291,7 @@ function Notification:notify(text, ...)
     return notify(self, text, ...)
 end
 
--- what a message on screen says, if there's one that includes text
+-- Returns what a message on screen says, if one includes text.
 function H.messageSaying(text)
     for _, window in ipairs(H.windows()) do
         if type(window.text) == "string" and window.text:find(text, 1, true) then
@@ -391,7 +300,7 @@ function H.messageSaying(text)
     end
 end
 
--- what a message on screen about something going wrong says, if there is one
+-- Returns what an error message on screen says, if there is one.
 function H.errorShown()
     for _, window in ipairs(H.windows()) do
         if window.icon == "notice-warning" and type(window.text) == "string" then
@@ -400,7 +309,7 @@ function H.errorShown()
     end
 end
 
--- wait for a notification containing text, shown after the first `since` notifications
+-- Waits for a notification containing text, shown after the first `since` notifications.
 function H.waitForNotification(text, timeout, since)
     return H.waitFor("a notification saying " .. text, timeout, function()
         for i = (since or 0) + 1, #H.notifications do
@@ -416,7 +325,7 @@ function H.shot(name)
     Device.screen:shot(string.format("%s/screenshots/%s.png", H.work_dir, name))
 end
 
--- run fn as if on the profile's kind of device, for the checks KindleFetch makes itself
+-- Runs fn as if on the profile's kind of device, for the checks FetchAnna makes itself.
 function H.asDevice(fn)
     local originals = {
         isKindle = Device.isKindle,
@@ -445,18 +354,6 @@ function H.asDevice(fn)
     if not ok then
         error(err, 0)
     end
-end
-
--- file size in bytes from Library Genesis' "523 kB" / "1 MB" style sizes
-function H.sizeInBytes(size)
-    local number, unit = tostring(size):match("([%d%.]+)%s*(%a*)")
-    local units = {
-        b = 1,
-        kb = 1024,
-        mb = 1024 * 1024,
-        gb = 1024 * 1024 * 1024,
-    }
-    return (tonumber(number) or math.huge) * (units[(unit or ""):lower()] or 1)
 end
 
 return H

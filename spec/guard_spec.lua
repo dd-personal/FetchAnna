@@ -5,7 +5,7 @@ describe("Guard", function()
 
     before_each(function()
         helper.reset()
-        Guard = require("util.guard")
+        Guard = require("fetchanna.util.guard")
     end)
 
     after_each(helper.cleanup)
@@ -20,7 +20,7 @@ describe("Guard", function()
         assert.are.equal(0, #helper.state.logs)
     end)
 
-    -- KOReader exited on errors in what it ran later, or lost them without a trace
+    -- KOReader would exit on an error in what it runs later, or lose it without a trace.
     it("logs what went wrong with where it happened, says so, and returns nothing", function()
         local result = Guard.call("adding", function()
             local missing = nil
@@ -30,7 +30,7 @@ describe("Guard", function()
         local logged = helper.logged("err", "^adding went wrong:")
         assert.matches("attempt to index", logged)
         assert.matches("stack traceback", logged)
-        assert.are.equal("Kindle Fetch: something went wrong, see crash.log", helper.lastError())
+        assert.are.equal("FetchAnna: something went wrong, see crash.log", helper.lastError())
     end)
 
     it("leaves cleaning up after it, and saying so, to what was going on", function()
@@ -95,6 +95,6 @@ describe("Guard", function()
         assert.are.equal(2, helper.tick())
         assert.are.equal(1, cleaned)
         assert.is_truthy(helper.logged("err", "^polling went wrong:"))
-        assert.are.equal("Kindle Fetch: something went wrong, see crash.log", helper.lastError())
+        assert.are.equal("FetchAnna: something went wrong, see crash.log", helper.lastError())
     end)
 end)

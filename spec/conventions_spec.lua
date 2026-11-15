@@ -1,19 +1,19 @@
 local helper = require("helper")
 
--- rules the plugin's code keeps to everywhere, checked here so that they aren't forgotten in new code
+-- Rules the plugin's code keeps everywhere, checked so new code doesn't forget them.
 describe("The plugin's code", function()
     local sources
 
     setup(function()
         sources = {}
-        local pipe = io.popen("find kindlefetch.koplugin -name '*.lua' | sort")
+        local pipe = io.popen("find fetchanna.koplugin -name '*.lua' | sort")
         for path in pipe:lines() do
             sources[path] = helper.readFile(path)
         end
         pipe:close()
     end)
 
-    -- each line of each file, without its comments, that has the pattern in it
+    -- Returns every line with the pattern, ignoring comments.
     local function linesWith(pattern, except)
         local found = {}
         for path, source in pairs(sources) do
@@ -32,17 +32,24 @@ describe("The plugin's code", function()
         return found
     end
 
-    -- which KOReader doesn't catch errors in (see Guard)
+    -- KOReader doesn't catch errors in scheduled functions (see Guard).
     it("schedules what runs later through Guard", function()
-        assert.are.same({}, linesWith("UIManager:scheduleIn%(", { ["kindlefetch.koplugin/util/guard.lua"] = true }))
-        assert.are.same({}, linesWith("UIManager:nextTick%(", { ["kindlefetch.koplugin/util/guard.lua"] = true }))
+        assert.are.same(
+            {},
+            linesWith("UIManager:scheduleIn%(", { ["fetchanna.koplugin/fetchanna/util/guard.lua"] = true })
+        )
+        assert.are.same(
+            {},
+            linesWith("UIManager:nextTick%(", { ["fetchanna.koplugin/fetchanna/util/guard.lua"] = true })
+        )
     end)
 
-    -- the code that finds out what went wrong passes it on, for what's on screen to say once (see NotifyUtil)
+    -- Other code passes on what went wrong, so the UI says it once (see NotifyUtil).
     it("only says things from what's on screen", function()
         local said = {}
         for _, line in ipairs(linesWith("NotifyUtil%.")) do
-            local path = line:match("^kindlefetch%.koplugin/([^:]+)")
+            -- Relative to fetchanna/, where all but main.lua and _meta.lua are.
+            local path = line:match("^fetchanna%.koplugin/([^:]+)"):gsub("^fetchanna/", "")
             if path:find("^api/") or path:find("^cache/") or path == "settings/settings.lua" then
                 table.insert(said, line)
             elseif path:find("^util/") and path ~= "util/notifyutil.lua" and path ~= "util/guard.lua" then
@@ -52,7 +59,7 @@ describe("The plugin's code", function()
         assert.are.same({}, said)
     end)
 
-    -- which hid gettext's _, so that what was said in its loop or function couldn't be translated, or failed
+    -- A variable named _ hides gettext's _, so text in its scope isn't translated, or fails.
     it("doesn't name what's left unused _ where _ translates", function()
         local hidden = {}
         for path, source in pairs(sources) do

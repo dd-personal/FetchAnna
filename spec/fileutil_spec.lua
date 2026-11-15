@@ -6,7 +6,7 @@ describe("FileUtil", function()
     before_each(function()
         helper.reset()
         dir = helper.tmpdir("files")
-        FileUtil = require("util.fileutil")
+        FileUtil = require("fetchanna.util.fileutil")
     end)
 
     after_each(helper.cleanup)
@@ -53,7 +53,7 @@ describe("FileUtil", function()
             assert.matches("No such file or directory", err)
         end)
 
-        -- which is only said once the file is closed, and was taken to have been written
+        -- A full device may only say so when the file is closed.
         it("says when the file can't be written in full, as when the storage is full", function()
             local ok, err = FileUtil.writeFile("/dev/full", "0.4")
             assert.is_nil(ok)
@@ -80,7 +80,7 @@ describe("FileUtil", function()
             helper.writeFile(dir .. "/plugin/util/curlutil.lua", "-- v0.4")
             assert.is_true(FileUtil.removeDir(dir .. "/plugin"))
             assert.is_false(helper.exists(dir .. "/plugin"))
-            -- and there's nothing to do once it's gone
+            -- And there's nothing to do once it's gone.
             assert.is_true(FileUtil.removeDir(dir .. "/plugin"))
         end)
 
@@ -108,7 +108,7 @@ describe("FileUtil", function()
             assert.are.same({ "a.txt", "b.txt" }, names)
         end)
 
-        -- which lfs.dir raises, and KOReader would exit on
+        -- lfs.dir raises that, and KOReader would exit on it.
         it("says when the folder can't be read", function()
             helper.stubs.lfs.dir = function(path)
                 error("cannot open " .. path .. ": No such file or directory")

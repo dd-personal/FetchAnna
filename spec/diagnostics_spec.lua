@@ -2,7 +2,7 @@ local helper = require("helper")
 
 describe("Diagnostics", function()
     local Diagnostics, Settings, LogUtil, data_dir, plugin_dir
-    -- what each address answers with, as getBody returns it, and the addresses asked, in order
+    -- What each URL answers, as getBody returns it, and the URLs asked.
     local answers, asked
     local can_fetch
 
@@ -13,13 +13,13 @@ describe("Diagnostics", function()
         helper.run("mkdir -p " .. helper.quote(data_dir .. "/settings"))
         plugin_dir = helper.tmpdir("plugin")
         helper.writeFile(plugin_dir .. "/version.txt", "0.8\n")
-        helper.stub("util.pathutil", {
+        helper.stub("fetchanna.util.pathutil", {
             getPluginPath = function()
                 return plugin_dir
             end,
         })
         can_fetch = true
-        helper.stub("util.curlutil", {
+        helper.stub("fetchanna.util.curlutil", {
             getVersion = function()
                 return "8.21.0"
             end,
@@ -31,7 +31,7 @@ describe("Diagnostics", function()
             end,
         })
         answers, asked = {}, {}
-        helper.stub("util.httputil", {
+        helper.stub("fetchanna.util.httputil", {
             CANCELLED = "request cancelled",
             canCancel = function()
                 return true
@@ -47,17 +47,17 @@ describe("Diagnostics", function()
             end,
         })
 
-        Settings = require("settings.settings")
+        Settings = require("fetchanna.settings.settings")
         Settings:load()
-        LogUtil = require("util.logutil")
-        Diagnostics = require("ui.diagnostics")
+        LogUtil = require("fetchanna.util.logutil")
+        Diagnostics = require("fetchanna.ui.diagnostics")
     end)
 
     after_each(helper.cleanup)
 
     local function viewer()
         local shown = helper.lastShown()
-        assert.are.equal("Kindle Fetch diagnostics", shown.title)
+        assert.are.equal("FetchAnna diagnostics", shown.title)
         return shown
     end
 
@@ -76,14 +76,12 @@ describe("Diagnostics", function()
         it("says which versions, device and settings are in use", function()
             local report = Diagnostics.report()
 
-            assert.matches("^KindleFetch 0.8 on KOReader .*, curl 8.21.0\n", report)
+            assert.matches("^FetchAnna 0.8 on KOReader .*, curl 8.21.0\n", report)
             assert.matches("\nTime: %d%d%d%d%-%d%d%-%d%d %d%d:%d%d", report)
             assert.matches("\nFetching with: curl\n", report)
             assert.matches("\nDownload folder: [^\n]+\n", report)
-            -- the ones known when it was written, as none have been looked up
-            assert.matches("\nLibrary Genesis mirrors: https://libgen.vg, ", report, 1, true)
-            assert.matches("\nZ-Library: not logged in, at https://z-lib.sk\n", report, 1, true)
             assert.matches("\nLanguages: en\n", report, 1, true)
+            assert.matches("\nFile types: epub\n", report, 1, true)
             assert.matches("\nEncrypted DNS: off\n", report, 1, true)
             assert.matches("\nCovers: on\n", report, 1, true)
         end)
@@ -104,14 +102,33 @@ describe("Diagnostics", function()
             assert.is_nil(log:find("fetching a page", 1, true))
         end)
 
-        -- which would let whoever reads it into the account
-        it("says whether Z-Library is logged into, without the account", function()
-            Settings:setZlibAccount({ email = "reader@example.com", user_id = 42, user_key = "secret-key" })
+        -- Only the seeds, as SLUM hasn't been asked.
+        it("says which of Anna's Archive's sites are known, and how the account is", function()
             local report = Diagnostics.report()
+            assert.matches("\nAnna's Archive account: no_key, ", report, 1, true)
+            assert.matches("\nAnna's Archive sites: annas-archive.gd (seed), ", report, 1, true)
+            assert.matches("\nLooked up on SLUM: never\n", report, 1, true)
+        end)
 
-            assert.matches("\nZ-Library: logged in, at ", report, 1, true)
-            assert.is_nil(report:find("reader@example.com", 1, true))
-            assert.is_nil(report:find("secret-key", 1, true))
+        -- Shows a book came through the member API, the only source of download links (see
+        -- AnnasSearch.findDownloadLink).
+        it("says where the last download link came from and went to", function()
+            assert.matches("\nLast download link: none yet\n", Diagnostics.report(), 1, true)
+
+            local at = os.time()
+            require("fetchanna.api.keystore").setInfo({
+                last_link_at = at,
+                last_link_site = "annas-archive.gd",
+                last_link_server = "dl.example",
+            })
+            assert.matches(
+                "\nLast download link: "
+                    .. os.date("%Y-%m-%d %H:%M", at)
+                    .. ", a fast download from the member API on annas-archive.gd, served by dl.example\n",
+                Diagnostics.report(),
+                1,
+                true
+            )
         end)
     end)
 
@@ -132,62 +149,51 @@ describe("Diagnostics", function()
             assert.are.equal("Copied", helper.lastNotification())
         end)
 
-        -- where it can be copied from over USB, without showing up among the books
+        -- It can be copied from there over USB, and isn't listed among the books.
         it("saves the report in KOReader's folder, saying where", function()
             Diagnostics.show()
             button("Save").callback()
 
-            local path = data_dir .. "/kindlefetch-diagnostics.txt"
+            local path = data_dir .. "/fetchanna-diagnostics.txt"
             assert.are.equal(viewer().text, helper.readFile(path))
             assert.are.equal("Saved to " .. path, helper.lastNotification())
         end)
     end)
 
+    -- It sends the sites nothing of the account's.
     describe("testing the connection", function()
-        it("asks each site, then shows how it went", function()
-            answers["https://en.wikipedia.org/wiki/Library_Genesis"] = { "<html></html>", nil, 200 }
-            answers["https://libgen.li/"] = { "<html></html>", nil, 200 }
-            answers["https://libgen.vg/"] = { "<html>Bad gateway</html>", nil, 502 }
+        local SLUM = "https://open-slum.org/annas.html"
+
+        it("asks SLUM, then each of Anna's Archive's sites known, then shows how it went", function()
+            answers[SLUM] = { "<html></html>", nil, 200 }
+            answers["https://annas-archive.gd/"] = { "<html></html>", nil, 200 }
+            answers["https://annas-archive.gl/"] = { "<html>Bad gateway</html>", nil, 502 }
             Diagnostics.show()
             button("Test connection").callback()
 
-            assert.are.equal("https://en.wikipedia.org/wiki/Library_Genesis", asked[1])
-            assert.are.equal("https://libgen.vg/", asked[2])
-            assert.matches("^https://archive.org/advancedsearch.php", asked[#asked - 2])
-            assert.are.equal("https://www.gutenberg.org/ebooks/1342.opds", asked[#asked - 1])
-            assert.are.equal("https://z-lib.sk/eapi/info/languages", asked[#asked])
-
+            assert.are.same(
+                { SLUM, "https://annas-archive.gd/", "https://annas-archive.gl/", "https://annas-archive.pk/" },
+                asked
+            )
             local tested = viewer().text:match("\nConnection test:\n(.-)\n\n")
-            assert.matches("^  en.wikipedia.org answered %(HTTP 200%)\n", tested)
-            assert.matches("\n  libgen.vg answered %(HTTP 502%)\n", tested)
-            assert.matches("\n  libgen.li answered %(HTTP 200%)\n", tested)
-            assert.matches("\n  archive.org didn't answer: could not resolve host\n", tested, 1, true)
-            assert.matches("\n  www.gutenberg.org didn't answer: could not resolve host\n", tested, 1, true)
-            assert.is_truthy(helper.logged("info", "^tested the connection: en.wikipedia.org answered"))
-            -- with the message saying it was testing closed
+            assert.matches("^  open%-slum%.org answered %(HTTP 200%)\n", tested)
+            assert.matches("\n  annas-archive.gd answered (HTTP 200)\n", tested, 1, true)
+            assert.matches("\n  annas-archive.gl answered (HTTP 502)\n", tested, 1, true)
+            assert.matches("\n  annas-archive.pk didn't answer: could not resolve host", tested, 1, true)
+            assert.is_truthy(helper.logged("info", "^tested the connection: open%-slum%.org answered"))
+            -- The testing message has closed.
             assert.is_nil(helper.state.trap_widget)
         end)
 
-        -- rather than looking them up again, or changing them
-        it("asks the mirrors as they are", function()
-            local UrlCache = require("cache.urlcache")
-            UrlCache:set({ "https://libgen.example", "https://libgen.other" }, "libgen")
-            Diagnostics.testConnection()
-
-            assert.are.equal("https://libgen.example/", asked[2])
-            assert.are.equal("https://libgen.other/", asked[3])
-            assert.are.same({ "https://libgen.example", "https://libgen.other" }, UrlCache:get("libgen"))
-        end)
-
-        -- as each site that doesn't answer is waited on for a while
+        -- Each site that doesn't answer takes a while.
         it("can be called off, saying how it went with the sites tested by then", function()
-            answers["https://en.wikipedia.org/wiki/Library_Genesis"] = { "<html></html>", nil, 200 }
-            answers["https://libgen.vg/"] = { nil, "request cancelled" }
+            answers[SLUM] = { "<html></html>", nil, 200 }
+            answers["https://annas-archive.gd/"] = { nil, "request cancelled" }
             Diagnostics.testConnection()
 
             assert.are.equal(2, #asked)
             local tested = viewer().text:match("\nConnection test:\n(.-)\n\n")
-            assert.are.equal("  en.wikipedia.org answered (HTTP 200)\n  (called off at libgen.vg)", tested)
+            assert.are.equal("  open-slum.org answered (HTTP 200)\n  (called off at annas-archive.gd)", tested)
             assert.is_nil(helper.state.trap_widget)
         end)
     end)

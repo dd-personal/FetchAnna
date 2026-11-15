@@ -16,13 +16,13 @@ on:
         type: string
         required: false
 
-# two releases at once would pick the same version number
+# Two releases at once would pick the same version number.
 concurrency:
   group: release
 
 jobs:
   test:
-    # only release from main
+    # Only release from main.
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/tests.yml
 
@@ -32,17 +32,31 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          # full history and tags, to list the commits since the last release
+          # Full history and tags, to list the commits since the last release.
           fetch-depth: 0
+
+      # A build that updates itself from another repository would install that project's releases over itself, and one
+      # that names none never updates. So only a build that names this repository is released (see
+      # fetchanna.koplugin/fetchanna/updater/releasesource.lua).
+      - name: Check where the build updates itself from
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          source=fetchanna.koplugin/fetchanna/updater/releasesource.lua
+          repo=$(sed -n 's/^[[:space:]]*repo = "\([^"]*\)",[[:space:]]*$/\1/p' "$source")
+          if [ "$repo" != "$REPOSITORY" ]; then
+            echo "::error::$source names '${repo:-no repository}' rather than $REPOSITORY, which is releasing it"
+            exit 1
+          fi
 
       - name: Work out version numbers
         id: version
         env:
           BUMP: ${{ inputs.bump }}
         run: |
-          current=$(tr -d '[:space:]' < kindlefetch.koplugin/version.txt)
+          current=$(tr -d '[:space:]' < fetchanna.koplugin/version.txt)
           IFS=. read -r major minor patch <<< "$current"
           case "$BUMP" in
             major) next="$((major + 1)).0" ;;
@@ -81,8 +95,8 @@ jobs:
             printf '%s\n' "$commits"
           } > "$RUNNER_TEMP/notes.md"
 
-          # the plugin shows these notes in its update prompt, which (up to v0.3 at least)
-          # only understands \r\n line breaks and cuts the notes off at the first double quote
+          # The plugin shows these notes in its update prompt, which (up to v0.3 at least) only understands \r\n line
+          # breaks and cuts the notes off at the first double quote.
           tr '"' "'" < "$RUNNER_TEMP/notes.md" | sed 's/$/\r/' > "$RUNNER_TEMP/release-notes.md"
           cat "$RUNNER_TEMP/notes.md"
 
@@ -90,23 +104,37 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.next }}
         run: |
-          printf '%s' "$VERSION" > kindlefetch.koplugin/version.txt
+          printf '%s' "$VERSION" > fetchanna.koplugin/version.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Release v$VERSION" kindlefetch.koplugin/version.txt
+          git commit -m "Release v$VERSION" fetchanna.koplugin/version.txt
           git tag "v$VERSION"
-          # fails without pushing anything if main has moved on since the release started
+          # Fails without pushing anything if main has moved on since the release started.
           git push --atomic origin HEAD:main "refs/tags/v$VERSION"
 
+      # With the licence, which every copy has to carry. The zip is unzipped straight into KOReader's plugins folder, so
+      # it has to hold the plugin's folder and nothing else.
       - name: Build plugin zip
-        run: zip -r "$RUNNER_TEMP/kindlefetch.koplugin.zip" kindlefetch.koplugin
+        run: |
+          cp LICENSE fetchanna.koplugin/LICENSE
+          zip -r "$RUNNER_TEMP/fetchanna.koplugin.zip" fetchanna.koplugin
+          if unzip -Z1 "$RUNNER_TEMP/fetchanna.koplugin.zip" | grep -v '^fetchanna\.koplugin/'; then
+            echo "::error::the zip has the files above outside fetchanna.koplugin/"
+            exit 1
+          fi
+          for required in main.lua _meta.lua version.txt LICENSE fetchanna/plugin.lua; do
+            unzip -Z1 "$RUNNER_TEMP/fetchanna.koplugin.zip" | grep -qx "fetchanna.koplugin/$required" || {
+              echo "::error::the zip has no fetchanna.koplugin/$required"
+              exit 1
+            }
+          done
 
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.next }}
         run: |
-          gh release create "v$VERSION" "$RUNNER_TEMP/kindlefetch.koplugin.zip" \
+          gh release create "v$VERSION" "$RUNNER_TEMP/fetchanna.koplugin.zip" \
             --verify-tag \
             --title "v$VERSION" \
             --notes-file "$RUNNER_TEMP/release-notes.md"

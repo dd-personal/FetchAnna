@@ -3,13 +3,13 @@ local helper = require("helper")
 describe("MultiSearch", function()
     local MultiSearch, sites, searches, results, statuses, done, can_cancel
 
-    -- a site whose searches wait, as curl's do (see Trapper:dismissablePopen), until answered (see answer) or called
-    -- off with the stand-in they wait with
+    -- A site whose searches wait, as curl's do (see Trapper:dismissablePopen), until answered (see answer) or called
+    -- off.
     local function fakeSite(name, scopes)
         local site = { NAME = name, SCOPES = scopes }
         function site:search(query, page, scope)
             local waiting = coroutine.running()
-            local trap = require("util.httputil").getTrapWidget()
+            local trap = require("fetchanna.util.httputil").getTrapWidget()
             table.insert(searches, { site = name, query = query, page = page, scope = scope, trap = trap })
             trap.dismiss_callback = function()
                 coroutine.resume(waiting, false)
@@ -54,7 +54,7 @@ describe("MultiSearch", function()
         helper.reset()
         helper.state.data_dir = helper.tmpdir("data")
         searches, results, statuses, done, can_cancel = {}, {}, {}, 0, true
-        -- each search in a coroutine of its own, as KOReader's Trapper runs them
+        -- Each search gets its own coroutine, as under KOReader's Trapper.
         helper.stub("ui/trapper", {
             wrap = function(_, fn)
                 assert(coroutine.resume(coroutine.create(fn)))
@@ -65,7 +65,7 @@ describe("MultiSearch", function()
             end,
         })
         local trap_widgets = {}
-        helper.stub("util.httputil", {
+        helper.stub("fetchanna.util.httputil", {
             CANCELLED = "request cancelled",
             canCancel = function()
                 return can_cancel
@@ -78,12 +78,14 @@ describe("MultiSearch", function()
             end,
         })
         sites = {
-            libgen = fakeSite("Library Genesis", { "title", "author" }),
-            archive = fakeSite("Internet Archive", { "title", "author" }),
-            zlib = fakeSite("Z-Library"),
+            beta = fakeSite("Beta Books", { "title", "author" }),
+            gamma = fakeSite("Gamma Books", { "title", "author" }),
+            alpha = fakeSite("Alpha Books"),
         }
-        helper.stub("api.sources", sites)
-        MultiSearch = require("api.multisearch")
+        helper.stub("fetchanna.api.sources", sites)
+        MultiSearch = require("fetchanna.api.multisearch")
+        -- MultiSearch handles any number of sites, though FetchAnna has one.
+        MultiSearch.SOURCES = { "alpha", "beta", "gamma" }
     end)
 
     after_each(helper.cleanup)
@@ -99,112 +101,112 @@ describe("MultiSearch", function()
     end
 
     it("searches each site at once, passing on each one's books as soon as it has them", function()
-        MultiSearch.start("dune", { libgen = 1, archive = 2 }, nil, handlers)
+        MultiSearch.start("dune", { beta = 1, gamma = 2 }, nil, handlers)
         assert.are.equal(0, #searches)
         helper.runScheduled()
-        assert.are.equal(1, #searched("Library Genesis"))
-        assert.are.equal(2, searched("Internet Archive")[1].page)
+        assert.are.equal(1, #searched("Beta Books"))
+        assert.are.equal(2, searched("Gamma Books")[1].page)
 
-        sites.archive.answer({ "Dune" }, nil, 3, 50)
+        sites.gamma.answer({ "Dune" }, nil, 3, 50)
         assert.are.same({
-            { source = "archive", books = { "Dune" }, next_page = 3, results_read = 50 },
+            { source = "gamma", books = { "Dune" }, next_page = 3, results_read = 50 },
         }, results)
         assert.are.equal(0, done)
 
-        sites.libgen.answer({}, nil, nil, 25)
+        sites.beta.answer({}, nil, nil, 25)
         assert.are.equal(2, #results)
-        assert.are.equal("libgen", results[2].source)
+        assert.are.equal("beta", results[2].source)
         assert.are.equal(1, done)
     end)
 
-    -- e.g. only the books' authors, while a site that can't still searches everything
+    -- For example authors only. Other sites still search everything.
     it("narrows the search down on the sites that can be", function()
-        MultiSearch.start("herbert", { libgen = 1, zlib = 1 }, "author", handlers)
+        MultiSearch.start("herbert", { beta = 1, alpha = 1 }, "author", handlers)
         helper.runScheduled()
-        assert.are.equal("author", searched("Library Genesis")[1].scope)
-        assert.is_nil(searched("Z-Library")[1].scope)
+        assert.are.equal("author", searched("Beta Books")[1].scope)
+        assert.is_nil(searched("Alpha Books")[1].scope)
     end)
 
     it("calls off the sites still being searched, each saying so", function()
-        local search = MultiSearch.start("dune", { libgen = 1, archive = 1 }, nil, handlers)
+        local search = MultiSearch.start("dune", { beta = 1, gamma = 1 }, nil, handlers)
         helper.runScheduled()
-        sites.archive.answer({ "Dune" })
+        sites.gamma.answer({ "Dune" })
 
         search:cancel()
         assert.are.equal("request cancelled", results[2].err)
-        assert.is_true(searched("Library Genesis")[1].trap.cancelled)
+        assert.is_true(searched("Beta Books")[1].trap.cancelled)
         assert.are.equal(1, done)
         assert.is_true(search:isDone())
-        -- and isn't called off again
+        -- Cancelling again does nothing.
         search:cancel()
         assert.are.equal(2, #results)
     end)
 
-    -- as Library Genesis does, from the pages it had read
+    -- As Beta Books does, from the pages it had read.
     it("passes on what a site had found by the time it was called off", function()
-        local search = MultiSearch.start("dune", { libgen = 1 }, nil, handlers)
+        local search = MultiSearch.start("dune", { beta = 1 }, nil, handlers)
         helper.runScheduled()
-        sites.libgen.found_by_then = { "Dune" }
+        sites.beta.found_by_then = { "Dune" }
 
         search:cancel()
         assert.are.same({ "Dune" }, results[1].books)
         assert.is_nil(results[1].err)
     end)
 
-    -- where waiting for one would hold KOReader up, as with its own HTTP
+    -- KOReader's own HTTP blocks while it waits.
     describe("one after another, where they can't be waited for at once", function()
         before_each(function()
             can_cancel = false
         end)
 
         it("starts the next site once the one before has finished", function()
-            MultiSearch.start("dune", { libgen = 1, archive = 1, zlib = 1 }, nil, handlers)
+            MultiSearch.start("dune", { beta = 1, gamma = 1, alpha = 1 }, nil, handlers)
             helper.runScheduled()
-            assert.are.same({ "Z-Library" }, { searches[1].site })
+            assert.are.same({ "Alpha Books" }, { searches[1].site })
             assert.are.equal(1, #searches)
 
-            sites.zlib.answer({ "Dune" })
+            sites.alpha.answer({ "Dune" })
             assert.are.equal(1, #results)
             helper.runScheduled()
-            assert.are.equal("Library Genesis", searches[2].site)
+            assert.are.equal("Beta Books", searches[2].site)
         end)
 
         it("doesn't start the sites not started yet once called off", function()
-            local search = MultiSearch.start("dune", { libgen = 1, archive = 1 }, nil, handlers)
+            local search = MultiSearch.start("dune", { beta = 1, gamma = 1 }, nil, handlers)
             helper.runScheduled()
             search:cancel()
             helper.runScheduled()
 
             assert.are.equal(1, #searches)
             assert.are.equal("request cancelled", results[2].err)
-            assert.are.equal("archive", results[2].source)
+            assert.are.equal("gamma", results[2].source)
             assert.are.equal(1, done)
         end)
     end)
 
     it("says which sites are still being searched", function()
-        local search = MultiSearch.start("dune", { zlib = 1, libgen = 1, archive = 1 }, nil, handlers)
+        local search = MultiSearch.start("dune", { alpha = 1, beta = 1, gamma = 1 }, nil, handlers)
         helper.runScheduled()
-        assert.are.same({ "zlib", "libgen", "archive" }, search:pendingSources())
-        sites.archive.answer({})
-        assert.are.same({ "zlib", "libgen" }, search:pendingSources())
+        assert.are.same({ "alpha", "beta", "gamma" }, search:pendingSources())
+        sites.gamma.answer({})
+        assert.are.same({ "alpha", "beta" }, search:pendingSources())
     end)
 
-    -- e.g. which of Library Genesis' mirrors it's trying
+    -- For example which address it's trying.
     it("passes on what a site's search says it's waiting for", function()
-        sites.libgen.status = "Trying libgen.li (mirror 1 of 5)..."
-        MultiSearch.start("dune", { libgen = 1 }, nil, handlers)
+        sites.beta.status = "Trying beta.li (mirror 1 of 5)..."
+        MultiSearch.start("dune", { beta = 1 }, nil, handlers)
         helper.runScheduled()
-        assert.are.same({ "Trying libgen.li (mirror 1 of 5)..." }, statuses)
+        assert.are.same({ "Trying beta.li (mirror 1 of 5)..." }, statuses)
     end)
 
     it("says a site's search failed when something goes wrong in it", function()
-        sites.libgen.fails = true
-        MultiSearch.start("dune", { libgen = 1 }, nil, handlers)
+        sites.beta.fails = true
+        MultiSearch.start("dune", { beta = 1 }, nil, handlers)
         helper.runScheduled()
-        sites.libgen.answer({})
+        sites.beta.answer({})
 
-        assert.are.equal(require("util.errors").UNEXPECTED, results[1].err)
+        assert.are.equal(require("fetchanna.util.errors").UNEXPECTED, results[1].err)
         assert.are.equal(1, done)
     end)
 

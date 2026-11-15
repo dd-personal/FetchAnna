@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Runs KindleFetch's end-to-end tests in a real KOReader, without a window, for each emulated device.
-# These search Library Genesis, Internet Archive and Z-Library and download real books, so they need internet access
-# and aren't run in CI. Z-Library's are skipped unless KINDLEFETCH_ZLIB_EMAIL and KINDLEFETCH_ZLIB_PASSWORD are set.
+# Runs FetchAnna's end-to-end tests in a real KOReader, without a window, for each emulated device.
+# These open FetchAnna's menus, settings and update check in KOReader itself, so they need internet access (for the
+# update check) and aren't run in CI. Searching and downloading from Anna's Archive needs a member's key and uses up
+# its downloads, so it's tested by hand on a device instead (see docs/phase7-report.md).
 #
 # Usage: e2e/run.sh [-p profile]... [-k koreader_dir] [filter]
 #   -p profile       device to emulate (kindle, kindle-paperwhite, kobo-aura-one, android), can be repeated;
@@ -48,7 +49,7 @@ for profile in "${profiles[@]}"; do
     work="${repo}/e2e/.tmp/${profile}"
     rm -rf "${work}"
     mkdir -p "${work}/koreader/plugins" "${work}/books" "${work}/screenshots"
-    ln -s "${repo}/kindlefetch.koplugin" "${work}/koreader/plugins/kindlefetch.koplugin"
+    ln -s "${repo}/fetchanna.koplugin" "${work}/koreader/plugins/fetchanna.koplugin"
 
     env_vars=(
         "E2E_REPO=${repo}"
@@ -70,7 +71,7 @@ for profile in "${profiles[@]}"; do
              -c 'cd /app/lib/koreader && exec ./luajit "$1"' sh "${repo}/e2e/runner.lua")
     fi
 
-    # show the results, keeping KOReader's log in a file
+    # Shows the results, keeping KOReader's log in a file.
     set +e
     "${run[@]}" 2>&1 | tee "${work}/koreader.log" | sed -n 's/^E2E|//p'
     result=${PIPESTATUS[0]}

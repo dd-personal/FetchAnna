@@ -5,10 +5,10 @@ describe("Rollback", function()
 
     before_each(function()
         helper.reset()
-        plugin_path = helper.tmpdir("plugins") .. "/kindlefetch.koplugin"
+        plugin_path = helper.tmpdir("plugins") .. "/fetchanna.koplugin"
         helper.writeFile(plugin_path .. "/main.lua", "-- v0.4")
         helper.writeFile(plugin_path .. "/version.txt", "0.4\n")
-        Rollback = require("updater.rollback")
+        Rollback = require("fetchanna.updater.rollback")
     end)
 
     after_each(helper.cleanup)

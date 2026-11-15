@@ -5,13 +5,13 @@ describe("BookFilter", function()
 
     before_each(function()
         helper.reset()
-        helper.stub("api.sources", {
+        helper.stub("fetchanna.api.sources", {
             zlib = { NAME = "Z-Library" },
             libgen = { NAME = "Library Genesis" },
             archive = { NAME = "Internet Archive" },
         })
-        helper.stub("api.multisearch", { SOURCES = { "zlib", "libgen", "archive" } })
-        BookFilter = require("ui.bookfilter")
+        helper.stub("fetchanna.api.multisearch", { SOURCES = { "zlib", "libgen", "archive" } })
+        BookFilter = require("fetchanna.ui.bookfilter")
     end)
 
     after_each(helper.cleanup)
@@ -29,7 +29,7 @@ describe("BookFilter", function()
         return false
     end
 
-    -- each value's text and how many books have it, in the order they're listed
+    -- Returns each value's text and count, in listed order.
     local function counted(books, id, is_downloaded)
         local result = {}
         for _, value in ipairs(BookFilter.values(books, filter(id), is_downloaded or notDownloaded)) do
@@ -55,7 +55,7 @@ describe("BookFilter", function()
             assert.are.same({ "PDF (2)", "EPUB (1)", "MOBI (1)", "Unknown (1)" }, counted(books, "file_type"))
         end)
 
-        -- as Z-Library writes them in small letters, and Internet Archive lists several
+        -- Z-Library writes them in small letters, and Internet Archive lists several.
         it("counts each site's spelling of a language as the same, and each of a book's languages", function()
             local books = {
                 { language = "english" },
@@ -79,7 +79,7 @@ describe("BookFilter", function()
             assert.are.same({ "2000s (2)", "1990s (1)", "1810s (1)", "Unknown (1)" }, counted(books, "year"))
         end)
 
-        -- as Z-Library and Library Genesis say them
+        -- As Z-Library and Library Genesis write them.
         it("lists how big the books are, the smallest first", function()
             local books = {
                 { file_size = "2.06 MB" },
@@ -88,7 +88,7 @@ describe("BookFilter", function()
                 { file_size = "250 MB" },
                 { file_size = "1 GB" },
                 { file_size = "12 MiB" },
-                -- which Library Genesis gives a book without a size
+                -- Library Genesis's size for a book without one.
                 { file_size = "0" },
                 {},
             }
@@ -98,7 +98,7 @@ describe("BookFilter", function()
             )
         end)
 
-        -- even where none of the books have one, as finding out means looking in the download folder
+        -- Even when no book has one: it comes from the download folder.
         it("always lists whether books have been downloaded", function()
             local books = { { id = "a" }, { id = "b" } }
             assert.are.same({ "Yes (0)", "No (2)" }, counted(books, "downloaded"))
@@ -118,7 +118,7 @@ describe("BookFilter", function()
             assert.is_false(BookFilter.isOffered(file_type, BookFilter.values(books, file_type)))
             table.insert(books, { file_type = "pdf" })
             assert.is_true(BookFilter.isOffered(file_type, BookFilter.values(books, file_type)))
-            -- or that the books don't say
+            -- Or where some books don't say.
             assert.is_true(
                 BookFilter.isOffered(
                     filter("language"),
@@ -145,7 +145,7 @@ describe("BookFilter", function()
             assert.is_true(BookFilter.isShown({ source = "libgen", file_type = "epub" }, hidden, notDownloaded))
         end)
 
-        -- whose values weren't there to untick when what's hidden was chosen
+        -- They weren't listed to untick when the filter was set.
         it("shows the books with other values than those hidden", function()
             assert.is_true(BookFilter.isShown({ source = "archive" }, { site = { zlib = true } }, notDownloaded))
         end)
@@ -154,7 +154,7 @@ describe("BookFilter", function()
             local hidden = { language = { english = true } }
             assert.is_true(BookFilter.isShown({ language = "English, Latin" }, hidden, notDownloaded))
             assert.is_false(BookFilter.isShown({ language = "english" }, hidden, notDownloaded))
-            -- and hides those that don't say, where Unknown is
+            -- Hiding Unknown hides books that don't say.
             assert.is_false(BookFilter.isShown({}, { language = { [""] = true } }, notDownloaded))
         end)
 

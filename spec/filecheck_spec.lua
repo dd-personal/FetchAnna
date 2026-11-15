@@ -7,7 +7,7 @@ describe("FileCheck", function()
     before_each(function()
         helper.reset()
         dir = helper.tmpdir("filecheck")
-        FileCheck = require("util.filecheck")
+        FileCheck = require("fetchanna.util.filecheck")
     end)
 
     after_each(function()
@@ -24,7 +24,7 @@ describe("FileCheck", function()
         it("tells web pages, as sites send in place of what was asked for", function()
             assert.is_true(FileCheck.isWebPage("<!DOCTYPE html>\n<html><title>Please wait</title>"))
             assert.is_true(FileCheck.isWebPage("<html>\n<body>Not found</body></html>"))
-            -- with the mark text can start with, and spaces before it
+            -- With a UTF-8 byte order mark and whitespace before it.
             assert.is_true(FileCheck.isWebPage("\239\187\191\n  <!doctype HTML><html>"))
             assert.is_true(FileCheck.isWebPage('<?xml version="1.0"?>\n<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0">'))
         end)
@@ -52,7 +52,7 @@ describe("FileCheck", function()
             assert.is_true(FileCheck.isFileType("\255\216\255\224", "jpg"))
         end)
 
-        -- which some have other bytes before
+        -- Some have other bytes before it.
         it("finds a PDF's header after other bytes", function()
             assert.is_true(FileCheck.isFileType(string.rep("\0", 100) .. "%PDF-1.4\n", "pdf"))
             assert.is_false(FileCheck.isFileType("PK\3\4", "pdf"))
@@ -107,7 +107,7 @@ describe("FileCheck", function()
             assert.is_nil(FileCheck.problem(file("Dune.epub.part", fixtures.bookFile("epub", 2000)), "epub"))
             assert.is_nil(FileCheck.problem(file("Dune.txt.part", "Chapter 1"), "txt"))
             assert.is_nil(FileCheck.problem(file("Dune.html.part", "<!DOCTYPE html><html>"), "html"))
-            -- which isn't for it to say
+            -- A file that can't be read isn't for it to report.
             assert.is_nil(FileCheck.problem(dir .. "/missing", "epub"))
         end)
     end)

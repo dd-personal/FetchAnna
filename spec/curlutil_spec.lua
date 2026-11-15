@@ -3,7 +3,7 @@ local helper = require("helper")
 describe("CurlUtil", function()
     local data_dir, CurlUtil
 
-    -- pretend to be curl: write body to the -o file and the exit code to the exit file
+    -- Pretends to be curl: writes body to the -o file and the exit code to the exit file.
     local function fakeCurl(body, exit_code)
         return function(cmd)
             local output = cmd:match("%-o '([^']+)'")
@@ -14,7 +14,7 @@ describe("CurlUtil", function()
         end
     end
 
-    -- the proxy a curl command was given in a config file, and the file
+    -- Returns the proxy a curl command was given in a config file, and the file.
     local function proxyGiven(cmd)
         for config_file in cmd:gmatch("%-K '([^']+)'") do
             local proxy = (helper.readFile(config_file) or ""):match('proxy = "(.-)"\n')
@@ -29,7 +29,7 @@ describe("CurlUtil", function()
         data_dir = helper.tmpdir("data")
         helper.state.data_dir = data_dir
         helper.run("mkdir -p " .. helper.quote(data_dir .. "/settings"))
-        CurlUtil = require("util.curlutil")
+        CurlUtil = require("fetchanna.util.curlutil")
     end)
 
     after_each(helper.cleanup)
@@ -52,7 +52,7 @@ describe("CurlUtil", function()
         assert.are.equal("could not resolve host", CurlUtil.getErrorMeaning(6))
         assert.are.equal("TLS certificate verification failed", CurlUtil.getErrorMeaning(60))
         assert.are.equal("the site can't carry on from where the download stopped", CurlUtil.getErrorMeaning(33))
-        -- downloads need curl, which not every e-reader has
+        -- Downloads need curl, which not every e-reader has.
         assert.are.equal("curl isn't installed on this device", CurlUtil.getErrorMeaning(127))
         assert.are.equal("curl can't be run on this device", CurlUtil.getErrorMeaning(126))
         assert.are.equal("(curl exit code 99)", CurlUtil.getErrorMeaning(99))
@@ -72,7 +72,7 @@ describe("CurlUtil", function()
         assert.is_true(CurlUtil.isOutdated())
         assert.are.equal(CurlUtil.OUTDATED_ERROR, CurlUtil.explainExitCode(35))
         assert.are.equal(CurlUtil.OUTDATED_ERROR, CurlUtil.explainExitCode(60))
-        -- which isn't why it couldn't when it was offline
+        -- Being offline isn't down to the old curl.
         assert.are.equal("could not resolve host", CurlUtil.explainExitCode(6))
 
         helper.stubCommand("curl --version", "curl 8.21.0 (arm-unknown-linux-musleabihf) libcurl/8.21.0\n")
@@ -80,7 +80,7 @@ describe("CurlUtil", function()
         assert.is_false(CurlUtil.isOutdated())
         assert.are.equal("TLS/SSL connection failed", CurlUtil.explainExitCode(35))
 
-        -- other devices' curls aren't updated, and connect whatever their version
+        -- Other devices' curls aren't updated, and connect whatever their version.
         helper.stubs.device.kindle = false
         helper.stubCommand("curl --version", "curl 7.68.0 (x86_64-pc-linux-gnu) libcurl/7.68.0\n")
         CurlUtil.forgetVersion()
@@ -96,7 +96,7 @@ describe("CurlUtil", function()
         assert.is_nil(CurlUtil.getVersion())
     end)
 
-    -- it's asked for when KOReader starts, before searching, and before offering to update curl
+    -- It's asked for when KOReader starts, before searching, and before offering to update curl.
     it("only starts curl to ask its version once per session", function()
         helper.stubCommand("curl --version", "curl 8.17.0 (arm-unknown-linux-musleabihf) libcurl/8.17.0\n")
         CurlUtil.getVersion()
@@ -104,7 +104,7 @@ describe("CurlUtil", function()
         CurlUtil.getVersion()
         assert.are.equal(1, #helper.state.popen_calls)
 
-        -- or once it isn't there
+        -- Or once it isn't there.
         helper.stubCommand("curl --version", "")
         CurlUtil.forgetVersion()
         CurlUtil.getVersion()
@@ -122,7 +122,7 @@ describe("CurlUtil", function()
         assert.is_true(CurlUtil.canFetch())
     end)
 
-    -- pages are fetched with curl where it's up to it, as it asks for them compressed and can wait in the background
+    -- Pages are fetched with curl where it's up to it, as it asks for them compressed and can wait in the background.
     describe("fetching pages", function()
         local function installedCurl(description)
             helper.stubCommand("curl --version", description .. "\nRelease-Date: 2025-11-05\n")
@@ -149,7 +149,7 @@ describe("CurlUtil", function()
             assert.is_true(CurlUtil.canFetch())
         end)
 
-        -- as every site is https, which it fetched none of, rather than KOReader's own HTTP fetching them
+        -- Every site is HTTPS, so it would fetch nothing. KOReader's own HTTP fetches them instead.
         it("isn't left to a curl that can't make secure connections", function()
             helper.stubCommand(
                 "curl --version",
@@ -192,8 +192,8 @@ describe("CurlUtil", function()
             assert.is_nil(cmd:find("--compressed", 1, true))
         end)
 
-        -- as KOReader's own HTTP does, in a file, rather than on its command line, where any program on the device can
-        -- read it, as it can have a password in it
+        -- In a file, not on its command line, where any program on the device can read it, as it can have a password in
+        -- it.
         it("goes through KOReader's HTTP proxy, where it's on", function()
             helper.stubs.http.PROXY = "http://user:secret@proxy.example:8080"
             local cmd = CurlUtil.fetchCommand("https://libgen.example", "page", 10, 60)
@@ -201,17 +201,17 @@ describe("CurlUtil", function()
             local proxy, config_file = proxyGiven(cmd)
             assert.are.equal("http://user:secret@proxy.example:8080", proxy)
             assert.is_nil(cmd:find("secret", 1, true))
-            -- removed once curl has finished with it
+            -- Removed once curl has finished with it.
             assert.matches("; rm -f '" .. config_file .. "'; ", cmd, 1, true)
         end)
 
         it("goes without a proxy where there's none", function()
             local cmd = CurlUtil.fetchCommand("https://libgen.example", "page", 10, 60)
             assert.is_nil(cmd:find("-K", 1, true))
-            assert.are.same({}, helper.readDir(data_dir .. "/settings/tmp"))
+            assert.are.same({}, helper.readDir(data_dir .. "/settings/fetchanna_tmp"))
         end)
 
-        -- one for the proxy, and one for the rest, e.g. a form to post
+        -- One for the proxy, and one for the rest, e.g. a form to post.
         it("gives curl the proxy along with the other options it's given in a file", function()
             helper.stubs.http.PROXY = "http://koreader.example:3128"
             local cmd = CurlUtil.fetchCommand("https://libgen.example", "page", 10, 60, "options.txt")
@@ -221,24 +221,24 @@ describe("CurlUtil", function()
             assert.matches("; rm -f '" .. config_file .. "' 'options.txt'; ", cmd, 1, true)
         end)
 
-        -- where the network's own DNS blocks the sites (#55)
+        -- For where the network's own DNS blocks the sites (KindleFetch #55).
         it("looks names up with encrypted DNS where it's turned on, and curl can", function()
             installedCurl("curl 8.21.0 (arm-unknown-linux-musleabihf) libcurl/8.21.0")
             local cmd = CurlUtil.fetchCommand("https://libgen.example", "page", 10, 60)
             assert.is_nil(cmd:find("--doh-url", 1, true))
 
-            require("settings.settings"):setEncryptedDns(true)
+            require("fetchanna.settings.settings"):setEncryptedDns(true)
             assert.is_true(CurlUtil.canUseEncryptedDns())
             cmd = CurlUtil.fetchCommand("https://libgen.example", "page", 10, 60)
             assert.matches(" --doh-url https://1.1.1.1/dns-query", cmd, 1, true)
         end)
 
-        -- which curl can only from 7.62.0
+        -- curl can only from 7.62.0.
         it("goes without encrypted DNS where curl is too old for it", function()
-            -- (other than a Kindle, where curl that old can't fetch at all)
+            -- Not a Kindle, where a curl that old can't fetch at all.
             helper.stubs.device.kindle = false
             installedCurl("curl 7.61.1 (x86_64-pc-linux-gnu) libcurl/7.61.1")
-            require("settings.settings"):setEncryptedDns(true)
+            require("fetchanna.settings.settings"):setEncryptedDns(true)
 
             assert.is_true(CurlUtil.canFetch())
             assert.is_false(CurlUtil.canUseEncryptedDns())
@@ -248,11 +248,11 @@ describe("CurlUtil", function()
 
         it("fetches into a file of its own in the plugin's tmp dir", function()
             local page_file = CurlUtil.createPageFile()
-            assert.matches(data_dir .. "/settings/tmp/curl_download_", page_file, 1, true)
+            assert.matches(data_dir .. "/settings/fetchanna_tmp/curl_download_", page_file, 1, true)
             assert.are_not.equal(page_file, CurlUtil.createPageFile())
         end)
 
-        -- for what mustn't be on its command line, where any program on the device can read it, such as a password
+        -- For what mustn't be on its command line, where any program on the device can read it, such as a password.
         describe("with options from a file", function()
             it("writes each option quoted, in a file of its own that's removed if KOReader closes first", function()
                 local config_file = CurlUtil.createConfigFile({
@@ -260,7 +260,7 @@ describe("CurlUtil", function()
                     { "data", 'email=a%40b.c&note=say "hi" \\ bye' },
                 })
 
-                assert.matches(data_dir .. "/settings/tmp/curl_download_", config_file, 1, true)
+                assert.matches(data_dir .. "/settings/fetchanna_tmp/curl_download_", config_file, 1, true)
                 assert.matches("%.config$", config_file)
                 assert.are.equal(
                     'cookie = ""\ndata = "email=a%40b.c&note=say \\"hi\\" \\\\ bye"\n',
@@ -268,10 +268,10 @@ describe("CurlUtil", function()
                 )
             end)
 
-            -- which would end the option early, and could start another
+            -- It would end the option early, and could start another.
             it("won't write a value with a line break in it", function()
                 assert.is_nil(CurlUtil.createConfigFile({ { "data", "a=1\noutput = /etc/passwd" } }))
-                assert.are.same({}, helper.readDir(data_dir .. "/settings/tmp"))
+                assert.are.same({}, helper.readDir(data_dir .. "/settings/fetchanna_tmp"))
             end)
 
             it("has curl read them, then removes the file, still printing curl's exit code", function()
@@ -280,7 +280,7 @@ describe("CurlUtil", function()
                 assert.matches(" -K '" .. config_file .. "' -w '%{http_code}'", cmd, 1, true)
                 assert.is_nil(cmd:find("secret", 1, true))
 
-                -- in place of curl, something that answers with a status and exits as curl does when it times out
+                -- In place of curl, something that answers with a status and exits as curl does when it times out.
                 local pipe = io.popen((cmd:gsub("^%(curl ", "(sh -c 'printf 200; exit 28' ")))
                 local output = pipe:read("*a")
                 pipe:close()
@@ -302,10 +302,10 @@ describe("CurlUtil", function()
             assert.is_false(CurlUtil.isPidRunning(pid))
         end)
 
-        -- Cancel left curl running by itself, using the Wi-Fi and filling the book's .part file
+        -- Otherwise Cancel would leave curl running by itself, using the Wi-Fi and filling the book's .part file.
         it("stops what a background download runs, not only the shell that waits for it", function()
             local exit_file = CurlUtil.createExitFile()
-            -- sleep standing in for curl
+            -- sleep stands in for curl.
             local pipe = io.popen(CurlUtil.echoPid(CurlUtil.saveExitCode("sleep 30", exit_file)))
             local pid = tonumber(pipe:read("*l"))
             pipe:close()
@@ -325,8 +325,8 @@ describe("CurlUtil", function()
             local exit_file = CurlUtil.createExitFile()
             os.execute(CurlUtil.saveExitCode("sh -c 'exit 22'", exit_file))
             assert.are.equal(22, CurlUtil.getExitCode(exit_file))
-            -- the shell's own, when curl isn't there to run
-            os.execute(CurlUtil.saveExitCode("kindlefetch-no-such-command -s", exit_file))
+            -- The shell's own exit code, when curl isn't there to run.
+            os.execute(CurlUtil.saveExitCode("fetchanna-no-such-command -s", exit_file))
             assert.are.equal(127, CurlUtil.getExitCode(exit_file))
         end)
 
@@ -341,7 +341,7 @@ describe("CurlUtil", function()
             end)
 
             assert.is_true(CurlUtil.isPidRunning(4242))
-            -- finished, but not cleaned up yet
+            -- Finished, but not cleaned up yet.
             assert.is_false(CurlUtil.isPidRunning(4343))
             assert.is_false(CurlUtil.isPidRunning(4444))
         end)
@@ -360,6 +360,40 @@ describe("CurlUtil", function()
         end)
     end)
 
+    describe("getValidator", function()
+        local headers_file
+
+        before_each(function()
+            headers_file = CurlUtil.createHeadersFile()
+        end)
+
+        it("is the file's strong ETag, from the last response", function()
+            helper.writeFile(
+                headers_file,
+                'HTTP/1.1 302 Found\r\nLocation: /f\r\nETag: "redirect"\r\n\r\n'
+                    .. 'HTTP/1.1 200 OK\r\nETag: "abc123"\r\nLast-Modified: Tue, 11 Nov 2026 10:00:00 GMT\r\n\r\n'
+            )
+            assert.are.equal('"abc123"', CurlUtil.getValidator(headers_file))
+        end)
+
+        it("is when the file was last changed, where its ETag is weak or it has none", function()
+            helper.writeFile(
+                headers_file,
+                'HTTP/1.1 200 OK\r\nETag: W/"abc123"\r\nLast-Modified: Tue, 11 Nov 2026 10:00:00 GMT\r\n\r\n'
+            )
+            assert.are.equal("Tue, 11 Nov 2026 10:00:00 GMT", CurlUtil.getValidator(headers_file))
+        end)
+
+        it("is nothing where the server said neither, or that it can't send part of a file", function()
+            helper.writeFile(headers_file, "HTTP/1.1 200 OK\r\nContent-Length: 9\r\n\r\n")
+            assert.is_nil(CurlUtil.getValidator(headers_file))
+            helper.writeFile(headers_file, 'HTTP/1.1 200 OK\r\nAccept-Ranges: none\r\nETag: "abc123"\r\n\r\n')
+            assert.is_nil(CurlUtil.getValidator(headers_file))
+            assert.is_nil(CurlUtil.getValidator(data_dir .. "/missing"))
+            assert.is_nil(CurlUtil.getValidator(nil))
+        end)
+    end)
+
     describe("getDownloadSize", function()
         local headers_file
 
@@ -368,7 +402,7 @@ describe("CurlUtil", function()
         end)
 
         it("is in the plugin's tmp dir, apart from other downloads' files", function()
-            assert.matches(data_dir .. "/settings/tmp/curl_download_", headers_file, 1, true)
+            assert.matches(data_dir .. "/settings/fetchanna_tmp/curl_download_", headers_file, 1, true)
             assert.are_not.equal(headers_file, CurlUtil.createHeadersFile())
             assert.is_false(helper.exists(headers_file))
         end)
@@ -382,7 +416,7 @@ describe("CurlUtil", function()
             assert.are.equal(1048576, CurlUtil.getDownloadSize(headers_file))
         end)
 
-        -- when curl has asked for the rest of a download that stalled
+        -- As when curl has asked for the rest of a download that stalled.
         it("uses the whole file's size when only the rest of it was sent", function()
             helper.writeFile(
                 headers_file,
@@ -396,7 +430,7 @@ describe("CurlUtil", function()
             helper.writeFile(headers_file, "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n")
             assert.is_nil(CurlUtil.getDownloadSize(headers_file))
 
-            -- rather than the size of the redirect to it
+            -- Not the size of the redirect to it.
             helper.writeFile(
                 headers_file,
                 "HTTP/1.1 302 Found\r\nLocation: https://cdn.example/book\r\nContent-Length: 162\r\n\r\n"
@@ -405,7 +439,7 @@ describe("CurlUtil", function()
             assert.is_nil(CurlUtil.getDownloadSize(headers_file))
         end)
 
-        -- which a proxy answers first, before the site's own answer
+        -- A proxy answers first, before the site's own answer.
         it("uses the size of the file, rather than the proxy's connection", function()
             helper.writeFile(
                 headers_file,
@@ -414,7 +448,7 @@ describe("CurlUtil", function()
             assert.are.equal(1048576, CurlUtil.getDownloadSize(headers_file))
         end)
 
-        -- which is why curl gave up, when it gives up because of the site's answer
+        -- It's why curl gave up, when it gives up over the site's answer.
         it("says which HTTP status the site ended up answering with", function()
             assert.is_nil(CurlUtil.getDownloadStatus(headers_file))
 
@@ -429,7 +463,7 @@ describe("CurlUtil", function()
         it("returns nil until curl has noted the headers down", function()
             assert.is_nil(CurlUtil.getDownloadSize(headers_file))
 
-            -- still arriving
+            -- Still arriving.
             helper.writeFile(headers_file, "HTTP/2 200\r\ncontent-length: 1048576\r\n")
             assert.is_nil(CurlUtil.getDownloadSize(headers_file))
         end)
@@ -438,11 +472,11 @@ describe("CurlUtil", function()
     describe("exit files", function()
         it("creates a fresh exit file path in the plugin's tmp dir", function()
             local exit_file = CurlUtil.createExitFile()
-            assert.matches(data_dir .. "/settings/tmp/curl_download_", exit_file, 1, true)
+            assert.matches(data_dir .. "/settings/fetchanna_tmp/curl_download_", exit_file, 1, true)
             assert.is_false(helper.exists(exit_file))
         end)
 
-        -- a book's cover and the book itself can start downloading within the same second
+        -- A book's cover and the book itself can start downloading within the same second.
         it("are different for downloads started within the same second", function()
             helper.state.time = 1000
             assert.are_not.equal(CurlUtil.createExitFile(), CurlUtil.createExitFile())
@@ -457,8 +491,7 @@ describe("CurlUtil", function()
             assert.is_false(helper.exists(exit_file))
         end)
 
-        -- a download that finished was said to have ended unexpectedly, when checked on between the shell creating
-        -- the file and writing curl's exit code in it
+        -- A finished download can be checked on between the shell creating the file and writing curl's exit code in it.
         it("waits for the exit code to be written, rather than losing it", function()
             local exit_file = CurlUtil.createExitFile()
             helper.writeFile(exit_file, "")
@@ -470,10 +503,10 @@ describe("CurlUtil", function()
         end)
     end)
 
-    -- KOReader may close while downloads are running, leaving their files with nothing to remove them
+    -- KOReader may close while downloads are running, leaving their files with nothing to remove them.
     describe("removeLeftovers", function()
         it("removes the files left by earlier downloads", function()
-            local tmp_dir = data_dir .. "/settings/tmp/"
+            local tmp_dir = data_dir .. "/settings/fetchanna_tmp/"
             helper.writeFile(tmp_dir .. "curl_download_1784192163.exitcode", "0")
             helper.writeFile(tmp_dir .. "curl_download_config_1784192163_2.txt", 'url = "https://covers.example"')
             helper.writeFile(tmp_dir .. "curl_download_config_1784192163_2.txt.results", "0 a.jpg")
@@ -487,7 +520,7 @@ describe("CurlUtil", function()
 
         it("does nothing when there's nothing left", function()
             CurlUtil.removeLeftovers()
-            assert.is_false(helper.exists(data_dir .. "/settings/tmp"))
+            assert.is_false(helper.exists(data_dir .. "/settings/fetchanna_tmp"))
             assert.is_nil(helper.logged("info", "^removed"))
         end)
     end)
@@ -501,7 +534,7 @@ describe("CurlUtil", function()
         local exit_file = cmd:match("echo %$s > '([^']+)'")
         local _, config_file = proxyGiven(cmd)
 
-        -- removing the file curl was given the proxy in once it has finished
+        -- Removes the file curl was given the proxy in once it has finished.
         assert.are.equal(
             "(trap 'kill $c 2>/dev/null' TERM; curl -sL -f -o '"
                 .. path
@@ -530,7 +563,7 @@ describe("CurlUtil", function()
             helper.stubExecute("curl -sL -f -o", fakeCurl("epub data"))
 
             assert.is_true(CurlUtil.download("https://libgen.example/get.php?md5=abc", filepath))
-            -- logging where from, but not the link, which can carry a temporary key
+            -- Logs where from, but not the link, which can carry a temporary key.
             assert.is_truthy(helper.logged("dbg", "^curl downloading from libgen.example to"))
             assert.is_nil(helper.logged("dbg", "md5=abc"))
             assert.are.equal("epub data", helper.readFile(filepath))
@@ -538,10 +571,93 @@ describe("CurlUtil", function()
             local cmd = helper.state.executed[#helper.state.executed]
             assert.matches("'https://libgen.example/get.php?md5=abc'", cmd, 1, true)
             assert.matches("-A 'Mozilla/5.0'", cmd, 1, true)
-            -- Library Genesis sends empty covers without a referer
+            -- Library Genesis sends empty covers without a Referer.
             assert.matches("-e 'https://libgen.example/'", cmd, 1, true)
             assert.matches("--retry 2 --retry-delay 2", cmd, 1, true)
             assert.matches("--connect-timeout 15", cmd, 1, true)
+        end)
+
+        describe("from a link that's a secret itself", function()
+            local LINK = "https://dl.example/d3/y/1763000000/abcdef0123456789/Dune.epub"
+
+            -- Returns what each config file the command gives curl says, as one text.
+            local function configGiven(cmd)
+                local text = ""
+                for config_file in cmd:gmatch("%-K '([^']+)'") do
+                    text = text .. (helper.readFile(config_file) or "")
+                end
+                return text
+            end
+
+            it("gives it to curl in a file rather than on its command line, removed once curl is done", function()
+                local config
+                helper.stubExecute("curl -sL -f -o", function(cmd)
+                    config = configGiven(cmd)
+                    fakeCurl("epub data")(cmd)
+                end)
+
+                assert.is_true(CurlUtil.download(LINK, filepath, nil, { sensitive = true }))
+                local cmd = helper.state.executed[#helper.state.executed]
+                assert.is_nil(cmd:find("abcdef0123456789", 1, true))
+                assert.are.equal('url = "' .. LINK .. '"\n', config)
+                local config_file = cmd:match("%-K '([^']+)'")
+                assert.matches("rm -f '" .. config_file .. "'", cmd, 1, true)
+                assert.is_nil(helper.allLogged():find("abcdef0123456789", 1, true))
+            end)
+
+            it("doesn't send it as the referer, and only follows it to https", function()
+                helper.stubExecute("curl -sL -f -o", fakeCurl("epub data"))
+
+                CurlUtil.download(LINK, filepath, nil, { sensitive = true })
+                local cmd = helper.state.executed[#helper.state.executed]
+                assert.is_nil(cmd:find(" -e ", 1, true))
+                assert.matches("--proto =https --proto-redir =https", cmd, 1, true)
+            end)
+
+            it("goes through the proxy too, removing both files once curl is done", function()
+                helper.stubs.http.PROXY = "http://proxy.example:8080"
+                helper.stubExecute("curl -sL -f -o", fakeCurl("epub data"))
+
+                CurlUtil.download(LINK, filepath, nil, { sensitive = true })
+                local cmd = helper.state.executed[#helper.state.executed]
+                local proxy, proxy_config = proxyGiven(cmd)
+                assert.are.equal("http://proxy.example:8080", proxy)
+                local files = {}
+                for config_file in cmd:gmatch("%-K '([^']+)'") do
+                    table.insert(files, "'" .. config_file .. "'")
+                end
+                assert.are.equal(2, #files)
+                assert.matches("rm -f " .. table.concat(files, " "), cmd, 1, true)
+                assert.is_truthy(proxy_config)
+            end)
+
+            it("isn't downloaded when it can't be put in the file", function()
+                local ok, err = CurlUtil.download(LINK .. "\nfail", filepath, nil, { sensitive = true })
+                assert.is_nil(ok)
+                assert.are.equal("could not start curl", err)
+                assert.are.equal(0, #helper.state.executed)
+            end)
+
+            it("leaves nothing of it behind when curl can't be started", function()
+                helper.stubCommand("& echo $!", "")
+                local pid, err = CurlUtil.startDownload(LINK, filepath, nil, { sensitive = true })
+                assert.is_nil(pid)
+                assert.are.equal("could not start curl", err)
+                for __, file in ipairs(helper.readDir(data_dir .. "/settings/fetchanna_tmp")) do
+                    assert.is_nil(file:find("%.config$"), file)
+                end
+            end)
+        end)
+
+        it("only carries on with the file it got partway with, where asked to", function()
+            local config
+            helper.stubExecute("curl -sL -f -o", function(cmd)
+                config = (helper.readFile(cmd:match("%-K '([^']+)'") or "") or "")
+                fakeCurl("epub data")(cmd)
+            end)
+
+            CurlUtil.download("https://libgen.example/get.php", filepath, nil, { resume = true, if_range = '"v1"' })
+            assert.are.equal('header = "If-Range: \\"v1\\""\n', config)
         end)
 
         it("can limit how long the download takes", function()
@@ -554,7 +670,7 @@ describe("CurlUtil", function()
             assert.is_nil(helper.state.executed[#helper.state.executed]:find("--max-time", 1, true))
         end)
 
-        -- which say how big the file is, see getDownloadSize
+        -- They say how big the file is (see getDownloadSize).
         it("has curl note down the headers it's sent when asked to", function()
             helper.stubExecute("curl -sL -f -o", fakeCurl("epub data"))
 
@@ -618,7 +734,7 @@ describe("CurlUtil", function()
             assert.are.equal("http://proxy.example:8080", proxyGiven(helper.state.executed[#helper.state.executed]))
         end)
 
-        -- which was said to have failed with "(curl exit code nil)"
+        -- Not a failure with "(curl exit code nil)".
         it("says when curl couldn't be started", function()
             helper.stubExecute("curl -sL -f -o", function()
                 return 127
@@ -626,7 +742,7 @@ describe("CurlUtil", function()
             local ok, err = CurlUtil.download("https://libgen.example/get.php", filepath)
             assert.is_nil(ok)
             assert.are.equal("could not start curl", err)
-            assert.are.same({}, helper.readDir(data_dir .. "/settings/tmp"))
+            assert.are.same({}, helper.readDir(data_dir .. "/settings/fetchanna_tmp"))
         end)
 
         it("runs in the background and returns the curl pid", function()
@@ -634,7 +750,7 @@ describe("CurlUtil", function()
 
             local pid, exit_file = CurlUtil.startDownload("https://libgen.example/get.php", filepath)
             assert.are.equal(4242, pid)
-            assert.matches(data_dir .. "/settings/tmp/curl_download_", exit_file, 1, true)
+            assert.matches(data_dir .. "/settings/fetchanna_tmp/curl_download_", exit_file, 1, true)
         end)
 
         it("reports when the background download cannot start", function()
@@ -649,7 +765,7 @@ describe("CurlUtil", function()
     describe("downloadMultiple", function()
         local urls, paths
 
-        -- pretend to be curl --config: write each output listed in the config file, and each one's result
+        -- Pretends to be curl --config: writes each output listed in the config file, and each one's result.
         local function fakeParallelCurl(bodies, exit_code, transfer_exit_codes)
             return function(cmd)
                 local config = helper.readFile(cmd:match('%-%-config "([^"]+)"'))
@@ -685,14 +801,14 @@ describe("CurlUtil", function()
 
             local cmd = helper.state.executed[#helper.state.executed]
             assert.matches("--parallel --parallel-max 4", cmd, 1, true)
-            -- stalled files are given up on
+            -- Stalled files are given up on.
             assert.matches("--connect-timeout 15 --max-time 30", cmd, 1, true)
             assert.matches("%{exitcode} %{filename_effective}\\n'", cmd, 1, true)
             assert.matches("-e 'https://covers.example/'", cmd, 1, true)
             assert.matches("--retry 2", cmd, 1, true)
         end)
 
-        -- rather than waiting to see whether they can share one connection, which Library Genesis never allows
+        -- Without waiting to see whether they can share one connection, which Library Genesis never allows.
         it("opens a connection for every file at once, where curl can", function()
             helper.stubExecute("curl -sL -f --config", fakeParallelCurl({ "a", "b", "c" }))
             local function command()
@@ -703,7 +819,7 @@ describe("CurlUtil", function()
             helper.stubCommand("curl --version", "curl 7.68.0 (x86_64-pc-linux-gnu) libcurl/7.68.0\n")
             assert.matches("--parallel --parallel-max 4 --parallel-immediate", command(), 1, true)
 
-            -- older curls stop at options they don't know
+            -- Older curls stop at options they don't know.
             helper.stubCommand("curl --version", "curl 7.67.0 (x86_64-pc-linux-gnu) libcurl/7.67.0\n")
             CurlUtil.forgetVersion()
             assert.is_nil(command():find("--parallel-immediate", 1, true))
@@ -713,7 +829,7 @@ describe("CurlUtil", function()
             assert.is_nil(command():find("--parallel-immediate", 1, true))
         end)
 
-        -- which curl older than 7.66 doesn't have, and failed on, so no covers downloaded
+        -- curl older than 7.66 has no --parallel and fails on it, so no covers would download.
         it("downloads them one after another with a curl too old to download them at once", function()
             helper.stubExecute("curl -sL -f --config", fakeParallelCurl({ "a", "b", "c" }))
             helper.stubCommand("curl --version", "curl 7.65.3 (x86_64-pc-linux-gnu) libcurl/7.65.3\n")
@@ -722,7 +838,7 @@ describe("CurlUtil", function()
             assert.is_nil(helper.state.executed[#helper.state.executed]:find("--parallel", 1, true))
         end)
 
-        -- so covers can be shown as they arrive, rather than once the slowest has
+        -- So covers can be shown as they arrive, not once the slowest has.
         it("writes each file's result as soon as it has downloaded, where curl can", function()
             helper.stubExecute("curl -sL -f --config", fakeParallelCurl({ "a", "b", "c" }, 0, { 0, 0, 0 }))
             local function command()
@@ -730,19 +846,19 @@ describe("CurlUtil", function()
                 return helper.state.executed[#helper.state.executed]
             end
 
-            -- its stderr isn't buffered, unlike its stdout
+            -- Its stderr isn't buffered, unlike its stdout.
             helper.stubCommand("curl --version", "curl 7.63.0 (x86_64-pc-linux-gnu) libcurl/7.63.0\n")
             assert.matches("-w '%{stderr}%{exitcode} %{filename_effective}\\n' 2> '", command(), 1, true)
             assert.is_true(helper.exists(paths[3]))
 
-            -- older curls can only write them out together, once they've all finished
+            -- Older curls can only write them out together, once they've all finished.
             helper.stubCommand("curl --version", "curl 7.62.0 (x86_64-pc-linux-gnu) libcurl/7.62.0\n")
             CurlUtil.forgetVersion()
             assert.matches("-w '%{exitcode} %{filename_effective}\\n' > '", command(), 1, true)
             assert.is_true(helper.exists(paths[3]))
         end)
 
-        -- anything else in the file is read by curl as an option, such as where to save a file
+        -- curl reads anything else in the file as an option, such as where to save a file.
         it("only writes addresses and where to save them to curl's config file", function()
             helper.stubCommand("& echo $!", "4242\n")
             urls[2] =
@@ -761,7 +877,7 @@ describe("CurlUtil", function()
             assert.is_truthy(helper.logged("warn", "^left out a download whose address can't be used"))
         end)
 
-        -- with them, rather than on curl's command line
+        -- With them, not on curl's command line.
         it("gives curl the proxy in its config file", function()
             helper.stubCommand("& echo $!", "4242\n")
             helper.stubs.http.PROXY = "http://koreader.example:3128"
@@ -770,7 +886,7 @@ describe("CurlUtil", function()
             assert.matches('^proxy = "http://koreader.example:3128"\nurl = ', helper.readFile(config_file))
         end)
 
-        -- the next page's covers are fetched once these have finished, and older curls only say once they all have
+        -- The next page's covers are fetched once these have finished, and older curls only say once they all have.
         it("gives up on a file once nothing of it has arrived for a while, when asked to", function()
             helper.stubExecute("curl -sL -f --config", fakeParallelCurl({ "a", "b", "c" }))
 
@@ -806,7 +922,7 @@ describe("CurlUtil", function()
             assert.is_true(helper.exists(paths[3]))
         end)
 
-        -- logging why, which what's on screen says if need be, rather than a notification of its own
+        -- Logs why. What's on screen says so if need be, not a notification of its own.
         it("discards everything when curl fails", function()
             helper.stubExecute("curl -sL -f --config", fakeParallelCurl({ "a", "b", "c" }, 28))
 
@@ -844,16 +960,16 @@ describe("CurlUtil", function()
             assert.matches('output = "' .. paths[2] .. '"', helper.readFile(first_config), 1, true)
         end)
 
-        -- e.g. once the device's storage is full, when KOReader exited on writing it
+        -- E.g. once the device's storage is full. KOReader would exit on an unchecked write.
         it("doesn't start curl when the list of files to download can't be written", function()
-            helper.writeFile(data_dir .. "/settings/tmp", "not a folder")
+            helper.writeFile(data_dir .. "/settings/fetchanna_tmp", "not a folder")
 
             local pid, _, _, err = CurlUtil.downloadMultiple(urls, paths, true, 4, false, 15)
             assert.is_nil(pid)
             assert.are.equal("could not write the list of files for curl", err)
             assert.are.equal(0, CurlUtil.downloadMultiple(urls, paths, false, 4, false, 15))
             assert.are.same({}, helper.state.popen_calls)
-            assert.is_truthy(helper.logged("warn", "^could not create .*/settings/tmp/ for curl's files"))
+            assert.is_truthy(helper.logged("warn", "^could not create .*/settings/fetchanna_tmp/ for curl's files"))
             assert.is_truthy(helper.logged("warn", "^could not write curl's list of files to download"))
         end)
 
@@ -863,7 +979,7 @@ describe("CurlUtil", function()
             local pid, _, _, err = CurlUtil.downloadMultiple(urls, paths, true, 4, false, 15)
             assert.is_nil(pid)
             assert.are.equal("could not start curl", err)
-            assert.are.same({}, helper.readDir(data_dir .. "/settings/tmp"))
+            assert.are.same({}, helper.readDir(data_dir .. "/settings/fetchanna_tmp"))
         end)
     end)
 end)

@@ -1,7 +1,7 @@
 return {
     _all = {
-        lpath = "spec/?.lua;kindlefetch.koplugin/?.lua",
-        -- spec/helper.lua resets plugin modules and KOReader stubs itself before every test
+        lpath = "spec/?.lua;fetchanna.koplugin/?.lua",
+        -- spec/helper.lua resets plugin modules and KOReader stubs itself before every test.
         ["auto-insulate"] = false
     },
     default = {

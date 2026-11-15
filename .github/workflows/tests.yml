@@ -6,27 +6,30 @@ on:
   pull_request:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   lint:
-    # branches in this repo are already checked on push, so only check pull requests from forks
+    # Branches in this repo are already checked on push, so only check pull requests from forks.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      # the same version as in DEVELOPMENT.md, as formatting can change between versions
+      # The same version as in DEVELOPMENT.md, as formatting can change between versions.
       - name: Check formatting
-        uses: JohnnyMorganz/stylua-action@v5
+        uses: JohnnyMorganz/stylua-action@76fd70c03e6340ceaf673366712db9b20560b402 # v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           version: 2.5.2
           args: --check .
 
-      - uses: leafo/gh-actions-lua@v13
+      - uses: leafo/gh-actions-lua@32909a2dea0a48c433aec79e7fcd31b4cd55800f # v13
         with:
           luaVersion: "luajit-2.1"
 
-      - uses: leafo/gh-actions-luarocks@v6
+      - uses: leafo/gh-actions-luarocks@1c4a92caecc8f6850f673cbadfd57b3e555417ce # v6
 
       - name: Lint
         run: |
@@ -34,25 +37,25 @@ jobs:
           luacheck .
 
   busted:
-    # branches in this repo are already tested on push, so only test pull requests from forks
+    # Branches in this repo are already tested on push, so only test pull requests from forks.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      # KOReader runs on LuaJIT
-      - uses: leafo/gh-actions-lua@v13
+      # KOReader runs on LuaJIT.
+      - uses: leafo/gh-actions-lua@32909a2dea0a48c433aec79e7fcd31b4cd55800f # v13
         with:
           luaVersion: "luajit-2.1"
 
-      - uses: leafo/gh-actions-luarocks@v6
+      - uses: leafo/gh-actions-luarocks@1c4a92caecc8f6850f673cbadfd57b3e555417ce # v6
 
       - name: Install busted
         run: |
           luarocks install busted
           luarocks install luacov
 
-      # but those against the live sites (see canary.yml), which would fail a push whenever a site is down
+      # Not the tests against the live sites (see canary.yml), which would fail a push whenever a site is down.
       - name: Run tests
         run: busted --coverage --exclude-tags=live
 

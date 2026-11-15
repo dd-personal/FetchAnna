@@ -1,18 +1,17 @@
--- Stand-ins for the KOReader modules the plugin requires, plus filesystem helpers for specs.
--- Specs call helper.reset() in before_each to get fresh stubs and freshly loaded plugin modules,
--- and helper.cleanup() in after_each to remove any temporary files.
+-- Stand-ins for the KOReader modules the plugin requires, plus filesystem helpers. Specs call helper.reset() in
+-- before_each for fresh stubs and plugin modules, and helper.cleanup() in after_each.
 
 local helper = {}
 
--- keep the unpatched functions somewhere that survives this file being loaded again
-local originals = io.kindlefetch_spec_originals
+-- Kept where they survive this file being loaded again.
+local originals = io.fetchanna_spec_originals
     or {
         execute = os.execute,
         popen = io.popen,
         getenv = os.getenv,
         time = os.time,
     }
-io.kindlefetch_spec_originals = originals
+io.fetchanna_spec_originals = originals
 local real_execute = originals.execute
 local real_popen = originals.popen
 
@@ -42,12 +41,12 @@ local pwd = real_popen("pwd")
 helper.ROOT = pwd:read("*l")
 pwd:close()
 
--- relative on purpose: koreader's data dir is "." on kindle and kobo
+-- Relative on purpose: KOReader's data dir is "." on Kindle and Kobo.
 helper.TMP_ROOT = "spec/.tmp"
 
--- guard against specs reaching the network or modifying the host system
+-- Stops specs reaching the network or changing the host.
 local function guardCommand(cmd)
-    -- curl run anywhere in the command, e.g. by the shell that saves its exit code (see CurlUtil.saveExitCode)
+    -- curl anywhere in the command, e.g. in the shell that saves its exit code (see CurlUtil.saveExitCode).
     if cmd:find("%f[%w]curl%s") then
         error("unstubbed network command: " .. cmd, 3)
     end
@@ -56,8 +55,8 @@ local function guardCommand(cmd)
     end
 end
 
--- KOReader runs on LuaJIT, where os.execute returns the raw exit status (0 on success) rather than
--- Lua 5.2+'s true/nil, so emulate that when needed to make `os.execute(cmd) ~= 0` checks behave as on device
+-- LuaJIT's os.execute returns the raw exit status (0 on success), not Lua 5.2+'s true/nil. This matches it, so
+-- `os.execute(cmd) ~= 0` behaves as on a device.
 os.execute = function(cmd)
     if cmd == nil then
         return real_execute()
@@ -138,7 +137,7 @@ os.time = function(...)
     return originals.time(...)
 end
 
--- modules loaded before any spec runs are kept across resets
+-- Modules loaded before any spec runs are kept across resets.
 local baseline = {
     helper = true,
 }
@@ -146,7 +145,7 @@ for name in pairs(package.loaded) do
     baseline[name] = true
 end
 
--- a minimal version of KOReader's widget class hierarchy
+-- A minimal version of KOReader's widget class hierarchy.
 local function widgetClass()
     local Widget = {}
     Widget.__index = Widget
@@ -170,12 +169,12 @@ local function widgetClass()
         self.text = text
     end
 
-    -- laying a widget out again once what it says has changed, as KOReader's do
+    -- KOReader's widgets lay out again with reinit once their text changes.
     function Widget:init() end
     function Widget:free() end
     function Widget:reinit() end
 
-    -- roughly the size text would take up, for widgets laid out by their size
+    -- Roughly the size the text would take up.
     function Widget:getSize()
         return {
             w = self.width or #(self.text or "") * 10,
@@ -218,7 +217,7 @@ local function createStubs(state)
     }
 
     stubs.gettext = setmetatable({
-        -- the singular or plural of a translated message, for the number
+        -- Returns the singular or plural for n.
         ngettext = function(singular, plural, n)
             return n == 1 and singular or plural
         end,
@@ -233,7 +232,7 @@ local function createStubs(state)
         sdl = false,
         android = false,
         home_dir = nil,
-        -- KOReader's input, which can be told to ignore taps for a moment, kept in state.input_inhibited
+        -- KOReader's input can ignore taps for a moment, kept in state.input_inhibited.
         input = {
             inhibitInputUntil = function(_, set_or_seconds)
                 state.input_inhibited = set_or_seconds
@@ -262,7 +261,7 @@ local function createStubs(state)
         isKindle = function(self)
             return self.kindle
         end,
-        -- whether it has keys, such as Back, rather than only a touch screen
+        -- Whether it has keys, such as Back.
         hasKeys = function(self)
             return self.keys
         end,
@@ -298,7 +297,7 @@ local function createStubs(state)
             end
             return mode and { mode = mode } or nil
         end,
-        -- the names in a directory, like lfs.dir
+        -- Returns the names in a directory, like lfs.dir.
         dir = function(path)
             local names = { ".", ".." }
             local pipe = real_popen("ls -A " .. quote(path) .. " 2>/dev/null")
@@ -312,7 +311,7 @@ local function createStubs(state)
                 return names[i]
             end
         end,
-        -- the mode of what's at the path, without following a link to what it links to
+        -- Returns the mode of the path itself, not of what a link points to.
         symlinkattributes = function(path, request)
             local mode
             if succeeded("test -L " .. quote(path)) then
@@ -336,7 +335,7 @@ local function createStubs(state)
         end,
     }
 
-    -- settings files live in state.settings_files, and like LuaSettings only change on flush
+    -- Settings files live in state.settings_files and, like LuaSettings, only change on flush.
     stubs.luasettings = {
         open = function(_, path)
             local file = {
@@ -351,7 +350,7 @@ local function createStubs(state)
             function file:delSetting(key)
                 self.data[key] = nil
             end
-            -- (unless the storage can't be written, which LuaSettings doesn't say)
+            -- Unless the storage can't be written, which LuaSettings doesn't say.
             function file:flush()
                 if not state.settings_unwritable then
                     state.settings_files[path] = deepCopy(self.data)
@@ -381,7 +380,7 @@ local function createStubs(state)
             end
             return false
         end,
-        -- every refresh asked for is kept, as its type and the region of the screen it covers (none for all of it)
+        -- Keeps every refresh: its type and region (none for the whole screen).
         setDirty = function(_, _, refresh, region)
             if type(refresh) == "function" then
                 state.refresh = { refresh() }
@@ -402,11 +401,11 @@ local function createStubs(state)
         nextTick = function(_, fn)
             table.insert(state.scheduled, fn)
         end,
-        -- KOReader's offer to restart, or saying it needs restarting where it can't restart itself
+        -- KOReader's offer to restart, or its notice where it can't restart itself.
         askForRestart = function(_, text)
             table.insert(state.restart_prompts, text)
         end,
-        -- how many things are keeping the device from going into standby, which KOReader asserts never goes below 0
+        -- Counts what's preventing standby. KOReader asserts it never goes below 0.
         preventStandby = function()
             state.standby_prevented = state.standby_prevented + 1
         end,
@@ -416,12 +415,12 @@ local function createStubs(state)
         end,
     }
 
-    -- what plugins share with each other, such as whether AutoSuspend is to wait
+    -- What plugins share, such as whether AutoSuspend is to wait.
     stubs.pluginshare = {}
 
-    -- the parts of KOReader's ffi/util the plugin uses
+    -- The parts of KOReader's ffi/util the plugin uses.
     stubs.ffiutil = {
-        -- a translated message with what's said in it put in place of %1, %2..., as KOReader does
+        -- Fills %1, %2... in a translated message, as KOReader does.
         template = function(text, ...)
             local params = { ... }
             return (
@@ -430,21 +429,19 @@ local function createStubs(state)
                 end)
             )
         end,
-        -- KOReader runs what it's given in a process of its own; here it's run straight away, as if it had finished
-        -- by the time it's checked on, keeping each one's pid in state.subprocesses (or failing to start, as fork
-        -- does, when state.fork_fails is set)
+        -- KOReader runs fn in its own process. Here it runs at once, as if finished when checked on, with its pid kept
+        -- in state.subprocesses. With state.fork_fails set it fails to start, as fork does.
         runInSubProcess = function(fn)
             if state.fork_fails then
                 return false, "fork failed: Resource temporarily unavailable"
             end
-            -- (above any pid Linux gives, so none is taken to be running)
+            -- Above any pid Linux gives, so none is taken to be running.
             local pid = 5000000 + #state.subprocesses
             table.insert(state.subprocesses, pid)
             fn(pid)
             return pid
         end,
-        -- whether a process has finished, collecting it, which they all have here, unless listed in
-        -- state.subprocesses_running
+        -- Whether a process has finished: all have, unless listed in state.subprocesses_running.
         isSubProcessDone = function(pid)
             if state.subprocesses_running[pid] then
                 return false
@@ -457,11 +454,11 @@ local function createStubs(state)
     stubs.inputdialog = {
         new = function(_, o)
             o = o or {}
-            -- what's been typed, or what it was opened with
+            -- Returns what's been typed, or what it opened with.
             o.getInputText = function(self)
                 return self.input_text or self.input or ""
             end
-            -- its buttons, by their ids, which can be turned on and off, and have their text changed, as KOReader's
+            -- Its buttons by id, which can be enabled, disabled and renamed, as KOReader's can.
             o.button_table = {
                 getButtonById = function(_, id)
                     for _, row in ipairs(o.buttons or {}) do
@@ -495,7 +492,7 @@ local function createStubs(state)
         end,
     }
 
-    -- KOReader's dialog with several boxes to type in, where what's typed in each is kept as its field's text
+    -- KOReader's dialog with several input boxes, each kept as its field's text.
     stubs.multiinputdialog = {
         new = function(_, o)
             o = o or {}
@@ -518,21 +515,60 @@ local function createStubs(state)
         notify = function(_, text)
             table.insert(state.notifications, text)
         end,
-        -- a notification shown and closed by the plugin itself
+        -- A notification shown and closed by the plugin itself.
         new = function(_, notification)
             notification.is_notification = true
             return notification
         end,
     }
 
-    -- the parts of KOReader's util the plugin uses (the real one needs KOReader's ffi modules)
+    -- The parts of KOReader's util the plugin uses (the real one needs KOReader's ffi modules).
     stubs.util = {
+        -- As KOReader's: a few named entities, then numbered ones (decimal and hex) as UTF-8, and &amp; last. Other
+        -- named ones (e.g. &eacute;) are left alone.
         htmlEntitiesToUtf8 = function(text)
+            local function utf8Char(code)
+                if code < 0x80 then
+                    return string.char(code)
+                elseif code < 0x800 then
+                    return string.char(0xC0 + math.floor(code / 0x40), 0x80 + code % 0x40)
+                elseif code < 0x10000 and (code < 0xD800 or code > 0xDFFF) then
+                    return string.char(
+                        0xE0 + math.floor(code / 0x1000),
+                        0x80 + math.floor(code / 0x40) % 0x40,
+                        0x80 + code % 0x40
+                    )
+                elseif code >= 0x10000 and code < 0x110000 then
+                    return string.char(
+                        0xF0 + math.floor(code / 0x40000),
+                        0x80 + math.floor(code / 0x1000) % 0x40,
+                        0x80 + math.floor(code / 0x40) % 0x40,
+                        0x80 + code % 0x40
+                    )
+                end
+                return "\239\191\189"
+            end
+            for _, entity in ipairs({
+                { "&lt;", "<" },
+                { "&gt;", ">" },
+                { "&quot;", '"' },
+                { "&lsquo;", "\226\128\152" },
+                { "&rsquo;", "\226\128\153" },
+                { "&ldquo;", "\226\128\156" },
+                { "&rdquo;", "\226\128\157" },
+                { "&mdash;", "\226\128\148" },
+                { "&apos;", "'" },
+                { "&nbsp;", "\194\160" },
+            }) do
+                text = text:gsub(entity[1], entity[2])
+            end
             text = text:gsub("&#(%d+);", function(code)
-                return string.char(tonumber(code))
+                return utf8Char(tonumber(code))
             end)
-            text = text:gsub("&quot;", '"'):gsub("&lt;", "<"):gsub("&gt;", ">"):gsub("&amp;", "&")
-            return text
+            text = text:gsub("&#x(%x+);", function(code)
+                return utf8Char(tonumber(code, 16))
+            end)
+            return (text:gsub("&amp;", "&"))
         end,
         urlEncode = function(url)
             if url == nil then
@@ -547,7 +583,7 @@ local function createStubs(state)
         getSafeFilename = function(name)
             return (name:gsub("/", "_"))
         end,
-        -- KOReader's lowers the capitals of every alphabet, rather than only English's
+        -- KOReader's lowers every alphabet's capitals, not only English's.
         stringLower = function(text)
             return text and text:lower()
         end,
@@ -570,7 +606,7 @@ local function createStubs(state)
             state.wifi_prompts = (state.wifi_prompts or 0) + 1
             self.prompted = "connect to wifi"
         end,
-        -- as KOReader's: what luasocket goes through, saved as turned on, or off
+        -- As KOReader's: sets luasocket's proxy, and saves whether it's on.
         setHTTPProxy = function(_, proxy)
             stubs.http.PROXY = proxy
             if proxy then
@@ -580,7 +616,7 @@ local function createStubs(state)
                 state.reader_settings.http_proxy_enabled = false
             end
         end,
-        -- like KOReader, turns wifi on (as the user has configured) and runs callback once connected
+        -- Like KOReader's, turns Wi-Fi on and runs callback once connected.
         runWhenConnected = function(self, callback)
             if self.connected then
                 return callback()
@@ -607,14 +643,14 @@ local function createStubs(state)
 
     stubs.widgetcontainer = widgetClass()
 
-    -- luasocket
+    -- Luasocket.
     stubs.http = {
         request = function()
             error("unstubbed http request", 2)
         end,
     }
     stubs.ltn12 = {
-        -- what's sent, which here is kept as it is, so specs can read it
+        -- Kept as it is, so specs can read what's sent.
         source = {
             string = function(text)
                 return {
@@ -633,9 +669,8 @@ local function createStubs(state)
             end,
         },
     }
-    -- KOReader's Trapper, which runs a function without holding up the rest of KOReader. here the function is just
-    -- run, and the commands it waits for are kept in state.trapped (and aren't finished if state.dismiss is set, as
-    -- when the widget that was given is tapped)
+    -- KOReader's Trapper runs a function without holding KOReader up. Here it's run directly, and the commands it waits
+    -- for are kept in state.trapped. With state.dismiss set they aren't finished, as when the widget given is tapped.
     stubs.trapper = {
         wrapped = false,
         wrap = function(self, fn)
@@ -663,14 +698,14 @@ local function createStubs(state)
         end,
     }
 
-    -- KOReader's json, read with dkjson instead, which busted installs
+    -- KOReader's json, read with dkjson, which busted installs.
     stubs.json = {
         decode = function(text)
             return (require("dkjson").decode(text))
         end,
     }
 
-    -- KOReader's timeouts for luasocket, kept in state.http_timeouts while they're set
+    -- KOReader's timeouts for luasocket, kept in state.http_timeouts while they're set.
     stubs.socketutil = {
         set_timeout = function(_, answer_timeout, total_timeout)
             state.http_timeouts = { answer_timeout, total_timeout }
@@ -681,8 +716,8 @@ local function createStubs(state)
         table_sink = function(t)
             return stubs.ltn12.sink.table(t)
         end,
-        -- writes what arrives to the file, which, unlike KOReader's, isn't closed, as the stand-ins for luasocket
-        -- here don't say when the last of it has arrived
+        -- Writes what arrives to the file. Unlike KOReader's, it doesn't close it, as the luasocket stand-ins don't say
+        -- when the last has arrived.
         file_sink = function(handle)
             return function(chunk)
                 if chunk then
@@ -693,7 +728,7 @@ local function createStubs(state)
         end,
     }
 
-    -- KOReader's hashes, worked out with sha256sum and md5sum instead
+    -- KOReader's hashes, worked out with sha256sum and md5sum.
     local function hash(command, message)
         local path = os.tmpname()
         local f = assert(io.open(path, "wb"))
@@ -709,7 +744,7 @@ local function createStubs(state)
         sha256 = function(message)
             return hash("sha256sum", message)
         end,
-        -- given the whole message, or, as KOReader's can be, a piece at a time, then nothing for the md5
+        -- Takes the whole message or, as KOReader's can, pieces and then nothing for the md5.
         md5 = function(message)
             if message then
                 return hash("md5sum", message)
@@ -726,7 +761,7 @@ local function createStubs(state)
         end,
     }
 
-    -- widgets
+    -- Widgets.
     stubs.Menu = widgetClass()
     function stubs.Menu:onGotoPage(page)
         self.page = page
@@ -735,7 +770,19 @@ local function createStubs(state)
     function stubs.Menu:onCloseWidget()
         self.close_widget_handled = true
     end
-    -- show other entries, on the page with the given one, or the page that's showing for a negative one
+    -- What the close button and Back key do, as in KOReader: close it, then call close_callback. A menu given its own
+    -- onClose has to close itself.
+    function stubs.Menu:onClose()
+        return self:onCloseAllMenus()
+    end
+    function stubs.Menu:onCloseAllMenus()
+        stubs.uimanager:close(self)
+        if self.close_callback then
+            self.close_callback()
+        end
+        return true
+    end
+    -- Shows other entries on the page with item_number, or the page showing when it's negative.
     function stubs.Menu:switchItemTable(title, item_table, item_number)
         self.title = title or self.title
         self.item_table = item_table or self.item_table
@@ -799,7 +846,7 @@ local MODULE_STUBS = {
     ["ffi/util"] = "ffiutil",
 }
 
--- widgets the plugin only builds and lays out
+-- Widgets the plugin only builds and lays out.
 local WIDGET_MODULES = {
     "ui/gesturerange",
     "ui/widget/container/centercontainer",
@@ -845,7 +892,7 @@ local CONSTANT_MODULES = {
     },
 }
 
--- unload plugin modules and install fresh stubs
+-- Unloads plugin modules and installs fresh stubs.
 function helper.reset()
     helper.cleanup()
 
@@ -862,10 +909,10 @@ function helper.reset()
         fs = {}, -- path -> "directory" | "file" | false, overrides the real filesystem
         settings_files = {},
         reader_settings = {},
-        -- curl isn't there unless a spec says it is, so pages are fetched with luasocket
+        -- curl isn't there unless a spec says it is, so pages are fetched with luasocket.
         commands = { { pattern = "curl --version", output = "" } },
         trapped = {},
-        -- a Kindle's settings, such as whether its screensaver is held off, which are kept in lipc
+        -- A Kindle's settings, such as whether its screensaver is held off, are kept in lipc.
         execute_stubs = {
             {
                 pattern = "lipc-set-prop",
@@ -900,7 +947,7 @@ function helper.reset()
     for _, module_name in ipairs(WIDGET_MODULES) do
         package.loaded[module_name] = widgetClass()
     end
-    -- buttons that can't be tapped until they're enabled again, as KOReader's are dimmed
+    -- Disabled buttons can't be tapped, as KOReader's are dimmed.
     local Button = package.loaded["ui/widget/button"]
     function Button:enable()
         self.enabled = true
@@ -908,7 +955,7 @@ function helper.reset()
     function Button:disable()
         self.enabled = false
     end
-    -- its buttons, by their ids, whose text can be changed, as KOReader's
+    -- Its buttons by id, which can be renamed, as KOReader's can.
     local ButtonDialog = package.loaded["ui/widget/buttondialog"]
     function ButtonDialog:init()
         local dialog = self
@@ -927,9 +974,9 @@ function helper.reset()
             end,
         }
     end
-    -- the characters TextBoxWidget uses for bold text
+    -- The characters TextBoxWidget uses for bold text.
     local TextBoxWidget = package.loaded["ui/widget/textboxwidget"]
-    -- how many lines its text wraps over, at 10px a character as in getSize, and how tall each is
+    -- How many lines its text wraps over, at 10px a character as in getSize, and how tall each is.
     function TextBoxWidget:getVisLineCount()
         return math.max(1, math.ceil(#(self.text or "") * 10 / (self.width or 1)))
     end
@@ -953,16 +1000,15 @@ function helper.reset()
     }
 end
 
--- replace a module with the given table
 function helper.stub(module_name, module)
     package.loaded[module_name] = module
 end
 
--- responses to real requests, kept for the whole run so each live page is only downloaded once
+-- Live responses, kept for the whole run so each page is downloaded once.
 local live_responses = {}
 
--- use a stand-in for luasocket's http module that makes real requests with curl (luasocket's https
--- support needs luasec, which needs OpenSSL headers to build), so specs can scrape live pages
+-- Returns a stand-in for luasocket's http that makes real requests with curl, so specs can read live pages. luasocket's
+-- HTTPS needs luasec, which needs OpenSSL headers to build.
 function helper.useLiveHttp()
     local http = {
         requests = {},
@@ -971,12 +1017,11 @@ function helper.useLiveHttp()
         table.insert(http.requests, request.url)
         local form = request.source and request.source.text
         local cookie = request.headers and request.headers["Cookie"]
-        -- what other specs asking the same can share, unlike what a form or cookies were sent for, or a redirect
-        -- that wasn't followed
+        -- Shared with other specs, unless it had a form or cookies, or a redirect that wasn't followed.
         local shared = not form and not cookie and request.redirect ~= false
         local response = shared and live_responses[request.url]
         if not response then
-            -- like luasocket, the timeout the plugin sets limits each wait for data rather than the whole transfer
+            -- As with luasocket, the timeout limits each wait for data, not the whole transfer.
             local timeout = helper.state.http_timeouts and helper.state.http_timeouts[1] or 60
             local headers_file = os.tmpname()
             local cmd = string.format(
@@ -992,7 +1037,7 @@ function helper.useLiveHttp()
             if request.proxy then
                 cmd = cmd .. " -x " .. quote(request.proxy)
             end
-            -- the form and cookies in a file, rather than on curl's command line, as they can log into an account
+            -- In a file, not on curl's command line, as they can log into an account.
             local config_file
             if form or cookie then
                 config_file = os.tmpname()
@@ -1013,7 +1058,7 @@ function helper.useLiveHttp()
                 os.remove(config_file)
             end
 
-            -- the headers of the last response, with their names in lower case, as luasocket gives them
+            -- The last response's headers, names in lower case, as luasocket gives them.
             local headers = {}
             local headers_f = io.open(headers_file, "r")
             local raw_headers = headers_f and headers_f:read("*a") or ""
@@ -1045,7 +1090,7 @@ function helper.useLiveHttp()
     return http
 end
 
--- return output (a string, or a function of the command) for any io.popen command containing pattern
+-- Returns output (a string, or a function of the command) for any io.popen command containing pattern.
 function helper.stubCommand(pattern, output)
     table.insert(helper.state.commands, {
         pattern = pattern,
@@ -1053,7 +1098,7 @@ function helper.stubCommand(pattern, output)
     })
 end
 
--- run handler(cmd) instead of any os.execute command containing pattern, returning its exit status (default 0)
+-- Runs handler(cmd) for any os.execute command containing pattern. Its result is the exit status (default 0).
 function helper.stubExecute(pattern, handler)
     table.insert(helper.state.execute_stubs, {
         pattern = pattern,
@@ -1061,7 +1106,7 @@ function helper.stubExecute(pattern, handler)
     })
 end
 
--- run the callbacks currently scheduled with UIManager:scheduleIn, but not ones they schedule
+-- Runs the callbacks scheduled with UIManager:scheduleIn, but not ones they schedule.
 function helper.tick()
     local due = helper.state.scheduled
     helper.state.scheduled = {}
@@ -1071,7 +1116,7 @@ function helper.tick()
     return #due
 end
 
--- run scheduled callbacks until nothing is left
+-- Runs scheduled callbacks until none are left.
 function helper.runScheduled()
     local ticks = 0
     while #helper.state.scheduled > 0 do
@@ -1081,7 +1126,18 @@ function helper.runScheduled()
     end
 end
 
--- the first message logged at level (e.g. "info") that matches pattern, without the plugin's prefix
+-- Returns everything logged as one string, to check what mustn't be logged wasn't.
+function helper.allLogged()
+    local parts = {}
+    for _, log in ipairs(helper.state.logs) do
+        for i = 2, #log do
+            table.insert(parts, tostring(log[i]))
+        end
+    end
+    return table.concat(parts, "\n")
+end
+
+-- Returns the first message at level (e.g. "info") matching pattern, without the plugin's prefix.
 function helper.logged(level, pattern)
     for _, log in ipairs(helper.state.logs) do
         if log[1] == level then
@@ -1105,7 +1161,7 @@ function helper.lastShown()
     return helper.state.shown[#helper.state.shown]
 end
 
--- what the last message about something going wrong said (see NotifyUtil.error)
+-- Returns the last error shown (see NotifyUtil.error).
 function helper.lastError()
     for i = #helper.state.shown, 1, -1 do
         if helper.state.shown[i].icon == "notice-warning" then
@@ -1123,7 +1179,7 @@ function helper.wasClosed(widget)
     return false
 end
 
--- filesystem
+-- Filesystem.
 
 local tmp_count = 0
 
@@ -1137,7 +1193,7 @@ function helper.cleanup()
     helper.run("rm -rf " .. quote(helper.TMP_ROOT))
 end
 
--- create a fresh directory under spec/.tmp, returned as a path relative to the repo root
+-- Creates a fresh directory under spec/.tmp. Returns its path relative to the repo root.
 function helper.tmpdir(name)
     tmp_count = tmp_count + 1
     local path = string.format("%s/%d-%s", helper.TMP_ROOT, tmp_count, name)
@@ -1185,10 +1241,10 @@ function helper.readFile(path)
     return content
 end
 
--- copy a plugin source file into plugin_path and load it from there, as KOReader would
+-- Copies a plugin source file into plugin_path and loads it from there, as KOReader would.
 function helper.loadPluginFileFrom(plugin_path, relative_path)
     local target = plugin_path .. "/" .. relative_path
-    helper.writeFile(target, assert(helper.readFile("kindlefetch.koplugin/" .. relative_path)))
+    helper.writeFile(target, assert(helper.readFile("fetchanna.koplugin/" .. relative_path)))
     return dofile(target)
 end
 

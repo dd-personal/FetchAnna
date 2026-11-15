@@ -1,14 +1,14 @@
 local helper = require("helper")
 
--- trimmed down response from https://api.github.com/repos/william-spongberg/KindleFetch.koplugin/releases/latest
+-- Trimmed-down response from https://api.github.com/repos/example-owner/FetchAnna.koplugin/releases/latest.
 local LATEST_RELEASE = [[{
-  "html_url": "https://github.com/william-spongberg/KindleFetch.koplugin/releases/tag/%s",
+  "html_url": "https://github.com/example-owner/FetchAnna.koplugin/releases/tag/%s",
   "tag_name": "%s",
   "name": "%s",
   "body": "Bug fixes\r\n- fixed updates on android"
 }]]
 
--- where KOReader keeps its data and user plugins on each kind of device
+-- Where KOReader keeps its data and user plugins on each kind of device.
 local LAYOUTS = {
     {
         name = "kindle/kobo",
@@ -25,16 +25,18 @@ local LAYOUTS = {
 for _, layout in ipairs(LAYOUTS) do
     describe("PluginUpdater on " .. layout.name, function()
         local data_dir, plugin_path, CurlUtil, PluginUpdater, Settings
-        -- github's answer when asked for the latest release (nil when it can't be reached), and each time it was asked
+        -- Where the build says its releases are (see ReleaseSource).
+        local release_source
+        -- GitHub's answer when asked for the latest release (nil when it can't be reached), and each time it was asked.
         local release_response, release_lookups
-        -- how the release itself is downloaded, set by the specs about updating
+        -- How the release itself is downloaded, set by the specs about updating.
         local downloadRelease
 
         local function latestRelease(tag)
             release_response = LATEST_RELEASE:format(tag, tag, tag)
         end
 
-        -- check for updates, and wait for the latest release to be looked up in the background
+        -- Checks for updates, and waits for the latest release to be looked up in the background.
         local function checkForUpdates(user_requested)
             PluginUpdater.checkForUpdates(user_requested)
             helper.runScheduled()
@@ -48,24 +50,31 @@ for _, layout in ipairs(LAYOUTS) do
             end
             helper.state.data_dir = data_dir
 
-            -- load PathUtil from an installed copy of the plugin, so updates never touch this repository
-            plugin_path = data_dir .. layout.plugins_dir .. "kindlefetch.koplugin"
-            helper.stub("util.pathutil", helper.loadPluginFileFrom(plugin_path, "util/pathutil.lua"))
+            -- Loads PathUtil from an installed copy of the plugin, so updates never touch this repository.
+            plugin_path = data_dir .. layout.plugins_dir .. "fetchanna.koplugin"
+            helper.stub(
+                "fetchanna.util.pathutil",
+                helper.loadPluginFileFrom(plugin_path, "fetchanna/util/pathutil.lua")
+            )
             helper.writeFile(plugin_path .. "/version.txt", "0.3\n")
 
             helper.run("mkdir -p " .. helper.quote(data_dir .. "/settings"))
 
-            CurlUtil = require("util.curlutil")
-            Settings = require("settings.settings")
-            PluginUpdater = require("updater.pluginupdater")
-            -- a curl that can look the latest release up, unless a spec says there isn't one
+            -- A build that updates itself from a repository of its own, unless a spec says it has none.
+            release_source = { repo = "example-owner/FetchAnna.koplugin" }
+            helper.stub("fetchanna.updater.releasesource", release_source)
+
+            CurlUtil = require("fetchanna.util.curlutil")
+            Settings = require("fetchanna.settings.settings")
+            PluginUpdater = require("fetchanna.updater.pluginupdater")
+            -- A curl that can look the latest release up, unless a spec says there isn't one.
             helper.stubCommand(
                 "curl --version",
                 "curl 8.21.0 (arm-unknown-linux-musleabihf) libcurl/8.21.0 OpenSSL/3.5.7 zlib/1.3.1\n"
             )
 
-            -- pretend to be curl, which looks up the latest release in the background and has finished by the
-            -- time it's checked on
+            -- Pretends to be curl, which looks up the latest release in the background and has finished by the time
+            -- it's checked on.
             release_response, release_lookups = nil, {}
             downloadRelease = function(url)
                 error("unexpected download of " .. url)
@@ -112,20 +121,20 @@ for _, layout in ipairs(LAYOUTS) do
                 checkForUpdates()
 
                 local dialog = helper.state.shown[1]
-                assert.are.equal("Update Kindle Fetch?", dialog.title)
-                assert.matches("Kindle Fetch v0.3 is installed.", dialog.input, 1, true)
+                assert.are.equal("Update FetchAnna?", dialog.title)
+                assert.matches("FetchAnna v0.3 is installed.", dialog.input, 1, true)
                 assert.matches("New version available: v0.4", dialog.input, 1, true)
                 assert.matches("Bug fixes\n- fixed updates on android", dialog.input, 1, true)
             end)
 
-            -- KOReader is in use while it checks, e.g. just after starting
+            -- KOReader is in use while it checks, e.g. right after starting.
             it("looks up the latest release in the background, for at most 15 seconds", function()
                 latestRelease("v0.4")
                 PluginUpdater.checkForUpdates()
 
                 assert.are.same({
                     {
-                        url = "https://api.github.com/repos/william-spongberg/KindleFetch.koplugin/releases/latest",
+                        url = "https://api.github.com/repos/example-owner/FetchAnna.koplugin/releases/latest",
                         background = true,
                         max_time = 15,
                     },
@@ -133,7 +142,7 @@ for _, layout in ipairs(LAYOUTS) do
                 assert.are.equal(0, #helper.state.shown)
 
                 helper.runScheduled()
-                assert.are.equal("Update Kindle Fetch?", helper.state.shown[1].title)
+                assert.are.equal("Update FetchAnna?", helper.state.shown[1].title)
             end)
 
             it("waits for curl to finish looking up the latest release", function()
@@ -155,7 +164,7 @@ for _, layout in ipairs(LAYOUTS) do
                 helper.writeFile(release_file, LATEST_RELEASE:format("v0.4", "v0.4", "v0.4"))
                 helper.writeFile(exit_file, "0")
                 helper.runScheduled()
-                assert.are.equal("Update Kindle Fetch?", helper.state.shown[1].title)
+                assert.are.equal("Update FetchAnna?", helper.state.shown[1].title)
                 assert.is_false(helper.exists(release_file))
             end)
 
@@ -181,7 +190,7 @@ for _, layout in ipairs(LAYOUTS) do
                 latestRelease("v0.3")
                 checkForUpdates()
 
-                assert.matches("Kindle Fetch v0.0.0 is installed.", helper.state.shown[1].input, 1, true)
+                assert.matches("FetchAnna v0.0.0 is installed.", helper.state.shown[1].input, 1, true)
             end)
 
             it("quietly gives up when the latest release cannot be fetched", function()
@@ -200,7 +209,7 @@ for _, layout in ipairs(LAYOUTS) do
                 assert.are.equal("Checking for updates failed: could not resolve host", helper.lastError())
             end)
 
-            -- which KOReader would have exited on
+            -- KOReader would otherwise exit on it.
             it("reports when looking up the latest release goes wrong, if the user asked", function()
                 latestRelease("v0.4")
                 CurlUtil.getExitCode = function()
@@ -219,12 +228,12 @@ for _, layout in ipairs(LAYOUTS) do
                 assert.are.equal("Checking for updates failed: could not start curl", helper.lastError())
             end)
 
-            -- e.g. when github limits how often it can be asked
+            -- E.g. when GitHub limits how often it can be asked.
             it("gives up when the answer isn't a release", function()
                 release_response = '{"message": "API rate limit exceeded for 203.0.113.7."}'
                 checkForUpdates(true)
 
-                -- and nothing else, such as an offer to update
+                -- And nothing else, such as an offer to update.
                 assert.are.equal(1, #helper.state.shown)
                 assert.are.equal(
                     "Checking for updates failed: GitHub says: API rate limit exceeded for 203.0.113.7.",
@@ -241,14 +250,14 @@ for _, layout in ipairs(LAYOUTS) do
                     helper.lastError()
                 )
 
-                -- KOReader's json gives an error rather than nothing
+                -- KOReader's json gives an error, not nothing.
                 helper.stub("json", {
                     decode = function()
                         error("invalid json")
                     end,
                 })
-                package.loaded["updater.pluginupdater"] = nil
-                PluginUpdater = require("updater.pluginupdater")
+                package.loaded["fetchanna.updater.pluginupdater"] = nil
+                PluginUpdater = require("fetchanna.updater.pluginupdater")
                 helper.state.shown = {}
                 checkForUpdates(true)
                 assert.are.equal(
@@ -257,7 +266,7 @@ for _, layout in ipairs(LAYOUTS) do
                 )
             end)
 
-            -- which both wrote the latest release to the same file
+            -- Two lookups would write the latest release to the same file.
             it(
                 "doesn't look it up again while it's being looked up, saying how it went once it has, if asked",
                 function()
@@ -280,8 +289,8 @@ for _, layout in ipairs(LAYOUTS) do
 
                     helper.writeFile(exit_file, "0")
                     helper.runScheduled()
-                    assert.are.equal("Kindle Fetch is up to date", helper.lastNotification())
-                    -- and it can be looked up again once it has been
+                    assert.are.equal("FetchAnna is up to date", helper.lastNotification())
+                    -- And it can be looked up again once it has been.
                     PluginUpdater.checkForUpdates(true)
                     assert.are.equal(2, lookups)
                 end
@@ -290,7 +299,7 @@ for _, layout in ipairs(LAYOUTS) do
             it("says it is up to date, if the user asked", function()
                 latestRelease("v0.3")
                 checkForUpdates(true)
-                assert.are.equal("Kindle Fetch is up to date", helper.lastNotification())
+                assert.are.equal("FetchAnna is up to date", helper.lastNotification())
 
                 helper.state.notifications = {}
                 checkForUpdates(false)
@@ -303,6 +312,55 @@ for _, layout in ipairs(LAYOUTS) do
                 assert.are.equal(0, #helper.state.shown)
             end)
 
+            -- So a fork never installs another project's releases over itself, such as KindleFetch's.
+            describe("in a build that doesn't say where its releases are", function()
+                before_each(function()
+                    release_source.repo = nil
+                end)
+
+                it("doesn't ask GitHub", function()
+                    latestRelease("v0.4")
+                    checkForUpdates(false)
+                    assert.are.equal(0, #release_lookups)
+                    assert.are.equal(0, #helper.state.popen_calls)
+                    assert.are.equal(0, #helper.state.shown)
+                    assert.are.equal(0, #helper.state.notifications)
+                    assert.is_truthy(helper.logged("info", "^not checking for updates"))
+                end)
+
+                it("says it doesn't update itself, if the user asked", function()
+                    latestRelease("v0.4")
+                    checkForUpdates(true)
+                    assert.are.equal(0, #release_lookups)
+                    assert.are.equal(
+                        "This build of FetchAnna doesn't update itself. Install new versions by hand.",
+                        helper.lastNotification()
+                    )
+                    assert.are.equal(0, #helper.state.shown)
+                end)
+            end)
+
+            -- It goes into the URLs GitHub is asked at.
+            it("only takes a repository that's an owner and a name", function()
+                for _, repo in ipairs({
+                    "",
+                    "owner",
+                    "owner/",
+                    "/name",
+                    "owner/name/releases",
+                    "owner/na me",
+                    "owner/../name",
+                    "https://github.com/owner/name",
+                    "owner/name?x=1",
+                    42,
+                }) do
+                    release_source.repo = repo
+                    assert.is_nil(PluginUpdater.getRepo(), tostring(repo))
+                end
+                release_source.repo = "some-owner/Fetch_Anna.koplugin"
+                assert.are.equal("some-owner/Fetch_Anna.koplugin", PluginUpdater.getRepo())
+            end)
+
             it("skips the check in the emulator", function()
                 helper.stubs.device.sdl = true
                 checkForUpdates()
@@ -310,7 +368,7 @@ for _, layout in ipairs(LAYOUTS) do
                 assert.are.equal(0, #helper.state.popen_calls)
             end)
 
-            -- so that automatic checks can wait a day before the next one
+            -- So automatic checks can wait a day before the next one.
             it("remembers when the latest release was last looked up", function()
                 helper.state.time = 1234567
                 latestRelease("v0.3")
@@ -323,7 +381,7 @@ for _, layout in ipairs(LAYOUTS) do
                 assert.is_nil(Settings:getLastUpdateCheck())
             end)
 
-            -- as a Kindle's own curl can be too old to connect to GitHub (#57)
+            -- A Kindle's own curl can be too old to connect to GitHub (KindleFetch #57).
             describe("where curl can't look up the latest release", function()
                 local requests
 
@@ -345,11 +403,11 @@ for _, layout in ipairs(LAYOUTS) do
                     checkForUpdates(true)
 
                     assert.are.same(
-                        { "https://api.github.com/repos/william-spongberg/KindleFetch.koplugin/releases/latest" },
+                        { "https://api.github.com/repos/example-owner/FetchAnna.koplugin/releases/latest" },
                         requests
                     )
                     assert.are.same({}, release_lookups)
-                    assert.are.equal("Update Kindle Fetch?", helper.lastShown().title)
+                    assert.are.equal("Update FetchAnna?", helper.lastShown().title)
                 end)
 
                 it("reports when it cannot be looked up", function()
@@ -357,7 +415,7 @@ for _, layout in ipairs(LAYOUTS) do
                     assert.are.equal("Checking for updates failed: could not resolve host", helper.lastError())
                 end)
 
-                -- which would hold KOReader up while it's in use
+                -- That would block KOReader while it's in use.
                 it("doesn't look it up by itself", function()
                     latestRelease("v0.4")
                     checkForUpdates()
@@ -380,7 +438,7 @@ for _, layout in ipairs(LAYOUTS) do
 
                     checkForUpdates(false)
                     assert.are.equal(1, #helper.state.shown)
-                    assert.matches("was turned down before", helper.logged("info", "^KindleFetch 0.4"))
+                    assert.matches("was turned down before", helper.logged("info", "^FetchAnna 0.4"))
                 end)
 
                 it("offers it again when the user asks to check for updates", function()
@@ -409,14 +467,14 @@ for _, layout in ipairs(LAYOUTS) do
             end
 
             before_each(function()
-                -- build a release zip laid out like the ones published on github
+                -- Builds a release zip laid out like the ones published on GitHub.
                 local build_dir = helper.tmpdir("release")
-                helper.writeFile(build_dir .. "/kindlefetch.koplugin/main.lua", "-- v0.4\n")
-                helper.writeFile(build_dir .. "/kindlefetch.koplugin/version.txt", "0.4\n")
-                release_zip = helper.abs(build_dir) .. "/kindlefetch.koplugin.zip"
+                helper.writeFile(build_dir .. "/fetchanna.koplugin/main.lua", "-- v0.4\n")
+                helper.writeFile(build_dir .. "/fetchanna.koplugin/version.txt", "0.4\n")
+                release_zip = helper.abs(build_dir) .. "/fetchanna.koplugin.zip"
                 helper.run(
                     string.format(
-                        "cd %s && zip -qr %s kindlefetch.koplugin",
+                        "cd %s && zip -qr %s fetchanna.koplugin",
                         helper.quote(build_dir),
                         helper.quote(release_zip)
                     )
@@ -435,8 +493,8 @@ for _, layout in ipairs(LAYOUTS) do
             it("downloads the release asset for the new version", function()
                 acceptUpdate()
                 assert.are.equal(
-                    "https://github.com/william-spongberg/KindleFetch.koplugin/releases/download/v0.4/"
-                        .. "kindlefetch.koplugin.zip",
+                    "https://github.com/example-owner/FetchAnna.koplugin/releases/download/v0.4/"
+                        .. "fetchanna.koplugin.zip",
                     downloaded_url
                 )
             end)
@@ -447,22 +505,22 @@ for _, layout in ipairs(LAYOUTS) do
                 assert.are.equal("-- v0.4\n", helper.readFile(plugin_path .. "/main.lua"))
                 assert.are.equal("0.4", helper.readFile(plugin_path .. "/version.txt"))
                 assert.is_false(helper.exists(plugin_path .. "/util/pathutil.lua"))
-                -- offering to restart KOReader, which uses the new version once it has
+                -- Offers to restart KOReader, which uses the new version once it has.
                 assert.are.same(
-                    { "Kindle Fetch has updated to v0.4, which KOReader will use once it restarts." },
+                    { "FetchAnna has updated to v0.4, which KOReader will use once it restarts." },
                     helper.state.restart_prompts
                 )
             end)
 
-            -- in case the new version doesn't work on this device (see Rollback)
+            -- In case the new version doesn't work on this device (see Rollback).
             it("keeps the version installed before to go back to, in place of any kept before", function()
                 helper.writeFile(plugin_path .. "/main.lua", "-- v0.3\n")
                 helper.writeFile(plugin_path .. ".previous/version.txt", "0.2\n")
                 acceptUpdate()
 
                 assert.are.equal("0.3\n", helper.readFile(plugin_path .. ".previous/version.txt"))
-                assert.is_true(helper.exists(plugin_path .. ".previous/util/pathutil.lua"))
-                assert.are.equal("0.3", require("updater.rollback").previousVersion(plugin_path))
+                assert.is_true(helper.exists(plugin_path .. ".previous/fetchanna/util/pathutil.lua"))
+                assert.are.equal("0.3", require("fetchanna.updater.rollback").previousVersion(plugin_path))
             end)
 
             it("cleans up the backup and downloaded files", function()
@@ -470,19 +528,19 @@ for _, layout in ipairs(LAYOUTS) do
 
                 assert.is_false(helper.exists(plugin_path .. ".backup"))
                 assert.is_false(helper.exists(plugin_path .. ".new"))
-                assert.is_false(helper.exists(data_dir .. "/cache/kindlefetch"))
+                assert.is_false(helper.exists(data_dir .. "/cache/fetchanna"))
             end)
 
-            -- which it was unzipped over, keeping files the release no longer has
+            -- Unzipping over it would keep files the release no longer has.
             it("removes what's left of an install that didn't finish first", function()
-                helper.writeFile(plugin_path .. ".new/kindlefetch.koplugin/stale.lua", "-- v0.2")
+                helper.writeFile(plugin_path .. ".new/fetchanna.koplugin/stale.lua", "-- v0.2")
                 acceptUpdate()
 
                 assert.are.equal("-- v0.4\n", helper.readFile(plugin_path .. "/main.lua"))
                 assert.is_false(helper.exists(plugin_path .. "/stale.lua"))
             end)
 
-            -- as not every device has unzip (stock Android before 9 doesn't, so updating failed there every time)
+            -- Not every device has unzip (stock Android before 9 doesn't).
             it("unzips the release with KOReader's own archiver where it has one", function()
                 local opened = {}
                 helper.stub("ffi/archiver", {
@@ -536,6 +594,60 @@ for _, layout in ipairs(LAYOUTS) do
                 assert.are.equal("-- v0.4\n", helper.readFile(plugin_path .. "/main.lua"))
             end)
 
+            -- A release could otherwise write anywhere KOReader can.
+            it("refuses a release with a file that would unzip outside its folder, before unzipping any", function()
+                local extracted = {}
+                helper.stub("ffi/archiver", {
+                    Reader = {
+                        new = function(self)
+                            return setmetatable({}, { __index = self })
+                        end,
+                        open = function()
+                            return true
+                        end,
+                        iterate = function()
+                            local entries = {
+                                { path = "fetchanna.koplugin/main.lua", mode = "file" },
+                                { path = "fetchanna.koplugin/../../evil.lua", mode = "file" },
+                            }
+                            local i = 0
+                            return function()
+                                i = i + 1
+                                return entries[i]
+                            end
+                        end,
+                        extractToPath = function(_, entry)
+                            table.insert(extracted, entry)
+                            return true
+                        end,
+                        close = function() end,
+                    },
+                })
+                acceptUpdate()
+
+                assert.are.same({}, extracted)
+                assert.are.equal("0.3\n", helper.readFile(plugin_path .. "/version.txt"))
+                assert.are.equal(
+                    "Updating FetchAnna failed: it has a file that would unzip outside FetchAnna's folder",
+                    helper.lastError()
+                )
+            end)
+
+            it("only unzips files and folders whose paths stay inside the folder", function()
+                local safe = PluginUpdater.isSafeEntry
+                assert.is_true(safe({ path = "fetchanna.koplugin/main.lua", mode = "file" }))
+                assert.is_true(safe({ path = "fetchanna.koplugin/", mode = "directory" }))
+                assert.is_true(safe({ path = "fetchanna.koplugin/a..b.lua" }))
+                assert.is_false(safe({ path = "../main.lua", mode = "file" }))
+                assert.is_false(safe({ path = "fetchanna.koplugin/../../main.lua" }))
+                assert.is_false(safe({ path = "/etc/passwd", mode = "file" }))
+                assert.is_false(safe({ path = "fetchanna.koplugin\\..\\main.lua" }))
+                assert.is_false(safe({ path = "fetchanna.koplugin/settings", mode = "link" }))
+                assert.is_false(safe({ path = "fetchanna.koplugin/fifo", mode = "named pipe" }))
+                assert.is_false(safe({ path = "" }))
+                assert.is_false(safe({}))
+            end)
+
             it("does nothing when the user cancels", function()
                 checkForUpdates()
                 local dialog = helper.state.shown[1]
@@ -547,23 +659,19 @@ for _, layout in ipairs(LAYOUTS) do
 
             it("keeps the installed plugin when the release has no plugin folder", function()
                 local build_dir = helper.tmpdir("bad-release")
-                helper.writeFile(build_dir .. "/KindleFetch-main/main.lua", "-- v0.4\n")
+                helper.writeFile(build_dir .. "/FetchAnna-main/main.lua", "-- v0.4\n")
                 local bad_zip = helper.abs(build_dir) .. "/release.zip"
                 helper.run(
-                    string.format(
-                        "cd %s && zip -qr %s KindleFetch-main",
-                        helper.quote(build_dir),
-                        helper.quote(bad_zip)
-                    )
+                    string.format("cd %s && zip -qr %s FetchAnna-main", helper.quote(build_dir), helper.quote(bad_zip))
                 )
                 release_zip = bad_zip
                 acceptUpdate()
 
                 assert.are.equal("0.3\n", helper.readFile(plugin_path .. "/version.txt"))
-                assert.are.equal("Updating Kindle Fetch failed: it has no Kindle Fetch in it", helper.lastError())
+                assert.are.equal("Updating FetchAnna failed: it has no FetchAnna in it", helper.lastError())
             end)
 
-            -- moving a folder fails as KOReader's os.rename does, for those to the given place
+            -- Makes moving a folder to the given place fail, as KOReader's os.rename does.
             local function failMovesTo(to, err)
                 local rename = os.rename
                 os.rename = function(from, dest)
@@ -583,7 +691,7 @@ for _, layout in ipairs(LAYOUTS) do
 
                 assert.are.equal("0.3\n", helper.readFile(plugin_path .. "/version.txt"))
                 assert.are.equal(
-                    "Updating Kindle Fetch failed: the installed version couldn't be moved aside (Permission denied)",
+                    "Updating FetchAnna failed: the installed version couldn't be moved aside (Permission denied)",
                     helper.lastError()
                 )
                 assert.is_false(helper.exists(plugin_path .. ".new"))
@@ -592,7 +700,7 @@ for _, layout in ipairs(LAYOUTS) do
             it("restores the installed plugin when the new one cannot be moved into place", function()
                 local rename = os.rename
                 os.rename = function(from, to)
-                    if from == plugin_path .. ".new/kindlefetch.koplugin" then
+                    if from == plugin_path .. ".new/fetchanna.koplugin" then
                         return nil, "Device or resource busy"
                     end
                     return rename(from, to)
@@ -605,20 +713,20 @@ for _, layout in ipairs(LAYOUTS) do
                 assert.are.equal("0.3\n", helper.readFile(plugin_path .. "/version.txt"))
                 assert.is_false(helper.exists(plugin_path .. ".backup"))
                 assert.are.equal(
-                    "Updating Kindle Fetch failed: the new version couldn't be moved into place (Device or resource "
+                    "Updating FetchAnna failed: the new version couldn't be moved into place (Device or resource "
                         .. "busy)",
                     helper.lastError()
                 )
             end)
 
-            -- which leaves Kindle Fetch out of KOReader's menu
+            -- That leaves FetchAnna out of KOReader's menu.
             it("says where the installed plugin is when it can't be put back", function()
                 failMovesTo(plugin_path, "No space left on device")
                 acceptUpdate()
 
                 assert.are.equal("0.3\n", helper.readFile(plugin_path .. ".backup/version.txt"))
                 assert.are.equal(
-                    "Updating Kindle Fetch failed: the new version couldn't be moved into place (No space left on "
+                    "Updating FetchAnna failed: the new version couldn't be moved into place (No space left on "
                         .. "device), and the installed version couldn't be put back from "
                         .. plugin_path
                         .. ".backup",
@@ -627,7 +735,7 @@ for _, layout in ipairs(LAYOUTS) do
                 assert.is_truthy(helper.logged("err", "^could not put the installed version back from"))
             end)
 
-            -- as a Kindle's own curl can be too old to connect to GitHub (#57)
+            -- A Kindle's own curl can be too old to connect to GitHub (KindleFetch #57).
             it("downloads it with KOReader's own HTTP where curl can't", function()
                 helper.stubCommand("curl --version", "")
                 local requests = {}
@@ -645,9 +753,9 @@ for _, layout in ipairs(LAYOUTS) do
                 helper.lastShown().buttons[1][2].callback()
 
                 assert.are.same({
-                    "https://api.github.com/repos/william-spongberg/KindleFetch.koplugin/releases/latest",
-                    "https://github.com/william-spongberg/KindleFetch.koplugin/releases/download/v0.4/"
-                        .. "kindlefetch.koplugin.zip",
+                    "https://api.github.com/repos/example-owner/FetchAnna.koplugin/releases/latest",
+                    "https://github.com/example-owner/FetchAnna.koplugin/releases/download/v0.4/"
+                        .. "fetchanna.koplugin.zip",
                 }, requests)
                 assert.is_nil(downloaded_url)
                 assert.are.equal("-- v0.4\n", helper.readFile(plugin_path .. "/main.lua"))
@@ -660,7 +768,7 @@ for _, layout in ipairs(LAYOUTS) do
                 acceptUpdate()
 
                 assert.are.equal("0.3\n", helper.readFile(plugin_path .. "/version.txt"))
-                assert.are.equal("Updating Kindle Fetch failed: nothing downloaded", helper.lastError())
+                assert.are.equal("Updating FetchAnna failed: nothing downloaded", helper.lastError())
             end)
 
             it("keeps the installed plugin when the download fails", function()
@@ -671,7 +779,7 @@ for _, layout in ipairs(LAYOUTS) do
 
                 assert.are.equal("0.3\n", helper.readFile(plugin_path .. "/version.txt"))
                 assert.are.equal(
-                    "Updating Kindle Fetch failed: it couldn't be downloaded (request timed out)",
+                    "Updating FetchAnna failed: it couldn't be downloaded (request timed out)",
                     helper.lastError()
                 )
             end)
@@ -684,8 +792,8 @@ for _, layout in ipairs(LAYOUTS) do
                 acceptUpdate()
 
                 assert.are.equal("0.3\n", helper.readFile(plugin_path .. "/version.txt"))
-                -- with what unzip said, for crash.log
-                assert.matches("^Updating Kindle Fetch failed: it couldn't be unzipped %(.+%)", helper.lastError())
+                -- With what unzip said, for crash.log.
+                assert.matches("^Updating FetchAnna failed: it couldn't be unzipped %(.+%)", helper.lastError())
                 assert.is_truthy(helper.logged("warn", "^could not unzip the release:"))
             end)
         end)

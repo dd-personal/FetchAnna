@@ -1,10 +1,10 @@
--- Boots a real KOReader without a window, with KindleFetch installed, and runs the end-to-end tests in
+-- Boots a real KOReader without a window, with FetchAnna installed, and runs the end-to-end tests in
 -- e2e/*_e2e.lua against it. Started by e2e/run.sh from KOReader's own folder, which sets:
 --   E2E_REPO     the repository's root
 --   E2E_PROFILE  the device to emulate (see profiles.lua)
 --   E2E_WORK     this run's folder, for downloaded books and screenshots
 --   E2E_FILTER   only run tests whose name contains this, if set
---   KO_HOME      KOReader's data folder, with KindleFetch linked into its plugins folder
+--   KO_HOME      KOReader's data folder, with FetchAnna linked into its plugins folder
 -- Lines starting with E2E| are results, everything else is KOReader's log.
 
 local ffi = require("ffi")
@@ -20,18 +20,18 @@ local function report(...)
     io.stdout:flush()
 end
 
--- emulate the device's screen, drawing offscreen rather than in a window
+-- Emulates the device's screen, drawing offscreen rather than in a window.
 ffi.C.setenv("SDL_VIDEO_DRIVER", "offscreen", 1)
 ffi.C.setenv("EMULATE_READER_W", tostring(profile.width), 1)
 ffi.C.setenv("EMULATE_READER_H", tostring(profile.height), 1)
 ffi.C.setenv("EMULATE_READER_DPI", tostring(profile.dpi), 1)
 
--- boot KOReader, as reader.lua does
+-- Boots KOReader, as reader.lua does.
 require("setupkoenv")
 G_defaults = require("luadefaults"):open()
 local DataStorage = require("datastorage")
 G_reader_settings = require("luasettings"):open(DataStorage:getDataDir() .. "/settings.reader.lua")
--- run button callbacks straight away, rather than after flashing the button
+-- Runs button callbacks straight away, rather than after flashing the button.
 G_reader_settings:makeFalse("flash_ui")
 
 local Device = require("device")
@@ -41,29 +41,29 @@ Device.input.dummy = true
 
 local H = require("helpers")
 
--- KOReader loads every copy of a plugin it finds, so leave out any copy of KindleFetch installed in KOReader
--- itself (e.g. rsynced into the Flatpak to try it out), and test only the one linked into KO_HOME
+-- KOReader loads every copy of a plugin it finds, so any copy of FetchAnna installed in KOReader itself (e.g.
+-- rsynced into the Flatpak to try it out) is left out, and only the one linked into KO_HOME is tested.
 local PluginLoader = require("pluginloader")
 local discover = PluginLoader._discover
 function PluginLoader:_discover()
     local plugins = {}
     for _, plugin in ipairs(discover(self)) do
-        if plugin.name ~= "kindlefetch" or plugin.path:find(os.getenv("KO_HOME"), 1, true) == 1 then
+        if plugin.name ~= "fetchanna" or plugin.path:find(os.getenv("KO_HOME"), 1, true) == 1 then
             table.insert(plugins, plugin)
         end
     end
     return plugins
 end
 
--- opening the file manager loads the plugins, adding KindleFetch's modules to package.path
+-- Opening the file manager loads the plugins, adding FetchAnna's modules to package.path.
 require("apps/filemanager/filemanager"):showFiles(H.books_dir)
 H.fileManager()
 H.pump()
 
--- download books into this run's folder
-require("settings.settings"):setDownloadDir(H.books_dir)
+-- Books are downloaded into this run's folder.
+require("fetchanna.settings.settings"):setDownloadDir(H.books_dir)
 
--- a small describe/it test runner
+-- A small describe/it test runner.
 
 local root = {
     children = {},
@@ -95,7 +95,7 @@ function it(name, fn)
     })
 end
 
--- a test that can't be run here, said to be skipped, and why
+-- A test that can't be run here, reported as skipped, with why.
 function pending(name)
     table.insert(current.children, {
         name = name,

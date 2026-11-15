@@ -1,5 +1,5 @@
 -- Devices the end-to-end tests emulate. KOReader always runs as its desktop version here, so each profile sets
--- the device's screen, and the device checks KindleFetch makes (e.g. whether to update curl on Kindles).
+-- the device's screen, and the device checks FetchAnna makes (e.g. whether to update curl on Kindles).
 -- Screen sizes match KOReader's own `./kodev run -s=...` presets.
 
 return {

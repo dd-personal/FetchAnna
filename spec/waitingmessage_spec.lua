@@ -6,13 +6,13 @@ describe("WaitingMessage", function()
     before_each(function()
         helper.reset()
         helper.state.data_dir = helper.tmpdir("data")
-        CurlUtil = require("util.curlutil")
-        WaitingMessage = require("ui.waitingmessage")
+        CurlUtil = require("fetchanna.util.curlutil")
+        WaitingMessage = require("fetchanna.ui.waitingmessage")
     end)
 
     after_each(helper.cleanup)
 
-    -- e.g. which of a site's mirrors is being tried, so a wait that takes a while doesn't look stuck
+    -- For example which site is being tried, so a long wait doesn't look stuck.
     describe("says what's being waited for now beneath what it says", function()
         it("with a Cancel button, where the wait can be called off", function()
             CurlUtil.canFetch = function()
@@ -35,7 +35,7 @@ describe("WaitingMessage", function()
         end)
     end)
 
-    -- as it's about to say something else or close, and laying it out again in between would only flash
+    -- It's about to change or close, and a layout in between would only flash.
     it("keeps saying the last, rather than going back to what it said before", function()
         CurlUtil.canFetch = function()
             return true

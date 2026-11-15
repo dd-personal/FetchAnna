@@ -22,7 +22,7 @@ describe("BookMenu", function()
         return b
     end
 
-    -- the parts of a laid out Menu that BookMenu relies on
+    -- The parts of a laid-out Menu that BookMenu relies on.
     local function newMenu(count)
         local Widget = helper.widgetClass()
         local items = {}
@@ -70,12 +70,12 @@ describe("BookMenu", function()
         data_dir = helper.tmpdir("data")
         helper.state.data_dir = data_dir
         selected = {}
-        -- covers are downloaded with curl, which is stood in for where they are
-        require("util.curlutil").canFetch = function()
+        -- Covers are downloaded with curl, stubbed where a test needs one.
+        require("fetchanna.util.curlutil").canFetch = function()
             return true
         end
-        CoverCache = require("cache.covercache")
-        BookMenu = require("ui.bookmenu")
+        CoverCache = require("fetchanna.cache.covercache")
+        BookMenu = require("fetchanna.ui.bookmenu")
     end)
 
     after_each(helper.cleanup)
@@ -164,7 +164,7 @@ describe("BookMenu", function()
             assert.are.equal("1990 · English [en] · Book (fiction) · epub · 1.2MB", info)
         end)
 
-        -- cutting them off after 50 bytes split letters in other alphabets, and didn't fit every screen
+        -- A cut at 50 bytes would split letters in other alphabets, and wouldn't fit every screen.
         it("shorten the title and authors to the room there is beside the cover", function()
             local menu = newMenu(1)
             local long = book(1, {
@@ -172,19 +172,25 @@ describe("BookMenu", function()
                 authors = string.rep("Булгаков, Михаил; ", 10),
             })
 
-            -- 580px wide, less the padding around the book and beside the cover, and the cover (or its placeholder)
+            -- 580px wide, less the padding around the book and beside the cover, and the cover (or its placeholder).
             local content = menu:createBookItemWidget(long)[1]
             content = content[#content]
             assert.are.equal(string.rep("Мастер и Маргарита ", 10), content[1].text)
             assert.are.equal(494, content[1].max_width)
             assert.are.equal(494, content[3].max_width)
-            -- and the details wrap in that room, rather than running off the edge of the screen
+            -- The details wrap in that room too.
             assert.are.equal(494, content[5].width)
-            -- each line is only as wide as its text, so they'd be centred otherwise
+            -- Each line is only as wide as its text, so they'd be centred otherwise.
             assert.are.equal("left", content.align)
 
-            -- with more room when the book has no cover
+            -- The same when the book has no cover, so the books line up.
             long.image_url = nil
+            content = menu:createBookItemWidget(long)[1]
+            content = content[#content]
+            assert.are.equal(494, content[1].max_width)
+
+            -- More room when covers are turned off.
+            require("fetchanna.settings.settings"):setShowBookCovers(false)
             content = menu:createBookItemWidget(long)[1]
             content = content[#content]
             assert.are.equal(560, content[1].max_width)
@@ -192,7 +198,7 @@ describe("BookMenu", function()
             assert.are.equal(560, content[5].width)
         end)
 
-        -- gray text is hard to read on e-ink screens (#3)
+        -- Gray text is hard to read on e-ink (KindleFetch #3).
         it("show authors and details in black", function()
             local menu = newMenu(1)
             local content = menu:createBookItemWidget(book(1))[1]
@@ -202,7 +208,7 @@ describe("BookMenu", function()
             assert.are.equal("black", content[5].fgcolor)
         end)
 
-        -- in bold, after the rest
+        -- In bold, after the rest.
         it("say when the book has been downloaded already", function()
             local menu = newMenu(2)
             menu.is_downloaded = function(b)
@@ -217,7 +223,7 @@ describe("BookMenu", function()
             assert.are.equal("1990 · English [en] · Book (fiction) · epub · 1.2MB", info)
         end)
 
-        -- where books from several sites are shown
+        -- For when books from several sites are shown.
         it("say which site the book was found on, where asked to", function()
             local menu = newMenu(1)
             menu.source_name = function()
@@ -252,27 +258,48 @@ describe("BookMenu", function()
             assert.are.equal(CoverCache:getPath("book-1"), item[1][1].file)
         end)
 
-        it("leave the cover out when the book doesn't have one", function()
+        -- Fitted in a square, a wide cover would cover the text beside it.
+        it("fit the cover in its column, keeping its shape", function()
+            local menu = newMenu(1)
+            cacheCover("book-1")
+            local column = menu:createBookItemWidget(book(1))[1][1]
+
+            assert.are.equal(66, column.dimen.w)
+            assert.are.equal(100, column.dimen.h)
+            assert.are.equal(66, column[1].width)
+            assert.are.equal(100, column[1].height)
+            assert.are.equal(0, column[1].scale_factor)
+        end)
+
+        -- Otherwise books without a cover would start further left.
+        it("keep room for the cover when the book doesn't have one, so the books line up", function()
             local menu = newMenu(1)
             local b = book(1)
             b.image_url = nil
+            local item = menu:createBookItemWidget(b)[1]
 
-            assert.are.equal(2, #menu:createBookItemWidget(b)[1])
+            assert.are.equal(3, #item)
+            assert.are.equal(66, item[1].dimen.w)
+            assert.are.equal(66, item[1][1].width)
+            assert.is_nil(item[1][1].file)
+            assert.is_nil(item[1][1].is_cover_placeholder)
         end)
 
-        it("leave the cover out when it couldn't be downloaded", function()
+        it("keep room for the cover when it couldn't be downloaded", function()
             local menu = newMenu(1)
-            require("util.curlutil").downloadMultiple = function()
+            require("fetchanna.util.curlutil").downloadMultiple = function()
                 return nil, nil, nil, "unable to launch curl"
             end
             CoverCache:downloadMultiple({ book(1) }, 6)
+            local item = menu:createBookItemWidget(book(1))[1]
 
-            assert.are.equal(2, #menu:createBookItemWidget(book(1))[1])
+            assert.are.equal(3, #item)
+            assert.is_nil(item[1][1].is_cover_placeholder)
         end)
 
         it("leave out placeholders when covers are turned off", function()
             local menu = newMenu(1)
-            require("settings.settings"):setShowBookCovers(false)
+            require("fetchanna.settings.settings"):setShowBookCovers(false)
 
             assert.are.equal(2, #menu:createBookItemWidget(book(1))[1])
         end)
@@ -280,7 +307,7 @@ describe("BookMenu", function()
         it("leave out covers already downloaded when covers are turned off", function()
             local menu = newMenu(1)
             cacheCover("book-1")
-            require("settings.settings"):setShowBookCovers(false)
+            require("fetchanna.settings.settings"):setShowBookCovers(false)
 
             assert.are.equal(2, #menu:createBookItemWidget(book(1))[1])
         end)
@@ -320,7 +347,7 @@ describe("BookMenu", function()
         end)
     end)
 
-    -- older versions of KOReader's menu lack what laying the books out builds on
+    -- Older versions of KOReader's menu lack what the layout builds on.
     it("says whether KOReader's menu can lay the books out", function()
         local Menu = require("ui/widget/menu")
         Menu.setupItemHeights = function() end
@@ -333,30 +360,30 @@ describe("BookMenu", function()
     end)
 
     describe("redrawing as covers arrive", function()
-        -- covers arrive several times a page, and each redraw refreshes the screen
+        -- Covers arrive several times a page, and each redraw refreshes the screen.
         it("doesn't redraw the page until one of its own covers has downloaded, or been given up on", function()
             local menu = newMenu(11)
             menu:updateItems()
             helper.state.refreshes = {}
 
             cacheCover("book-6")
-            menu:onKindleFetchCoversDownloaded()
+            menu:onFetchAnnaCoversDownloaded()
             assert.are.equal(0, #helper.state.refreshes)
 
             cacheCover("book-2")
-            menu:onKindleFetchCoversDownloaded()
+            menu:onFetchAnnaCoversDownloaded()
             assert.are.equal(1, #helper.state.refreshes)
 
-            -- its placeholder is taken away
-            require("util.curlutil").downloadMultiple = function()
+            -- Its placeholder is taken away.
+            require("fetchanna.util.curlutil").downloadMultiple = function()
                 return nil, nil, nil, "unable to launch curl"
             end
             CoverCache:downloadMultiple({ menu.item_table[3].book }, 1)
-            menu:onKindleFetchCoversDownloaded()
+            menu:onFetchAnnaCoversDownloaded()
             assert.are.equal(2, #helper.state.refreshes)
         end)
 
-        -- KOReader doesn't catch errors in it, and covers arrive several times a page
+        -- KOReader doesn't catch errors in it, and covers arrive several times a page.
         it("only logs what goes wrong redrawing", function()
             local menu = newMenu(11)
             menu:updateItems()
@@ -365,7 +392,7 @@ describe("BookMenu", function()
                 error("unexpected")
             end
 
-            assert.is_nil(menu:onKindleFetchCoversDownloaded())
+            assert.is_nil(menu:onFetchAnnaCoversDownloaded())
             assert.is_truthy(helper.logged("err", "^showing the covers that arrived went wrong:.*unexpected"))
             assert.is_nil(helper.lastError())
         end)
@@ -398,7 +425,7 @@ describe("BookMenu", function()
             assert.are.same({ "book-6", "book-9", "book-10" }, { requested[1], requested[2], requested[3] })
             assert.are.equal(3, #requested)
             assert.are.equal(5, requested.parallel_jobs)
-            -- the menu isn't redrawn until they have downloaded
+            -- The menu isn't redrawn until they have downloaded.
             assert.are.equal(0, #menu.item_group)
         end)
 
@@ -411,13 +438,13 @@ describe("BookMenu", function()
                 menu:loadCoversForPage(2)
             end)
 
-            -- so they're there by the time it's turned to
+            -- So they're there by the time it's turned to.
             it("downloads the next page's covers", function()
                 requested.on_done(5)
 
                 assert.are.same({ "book-11" }, { requested[1], requested[2] })
                 assert.are.equal(5, requested.parallel_jobs)
-                -- and stops there, rather than going on through every page
+                -- It stops there, not going on through every page.
                 assert.is_nil(requested.on_done)
             end)
 
@@ -468,27 +495,27 @@ describe("BookMenu", function()
             assert.are.same({ "book-1", "book-6" }, requests)
         end)
 
-        -- covers another search started downloading still show up once they download
+        -- Covers another search started still show up once they arrive.
         it("redraws the page showing once covers have downloaded", function()
             local menu = newMenu(11)
             menu.page = 3
             menu:updateItems()
             helper.state.refreshes = {}
             cacheCover("book-11")
-            menu:onKindleFetchCoversDownloaded()
+            menu:onFetchAnnaCoversDownloaded()
 
             assert.are.equal(2, #menu.item_group)
             assert.are.equal("book-11", menu.item_group[1].entry.book.id)
-            -- once, and without the flash of a full refresh
+            -- Once, and without the flash of a full refresh.
             assert.are.equal(1, #helper.state.refreshes)
             assert.are.equal("ui", helper.state.refreshes[1][1])
 
-            -- and not again, once they're all there
-            menu:onKindleFetchCoversDownloaded()
+            -- Not again once they're all there.
+            menu:onFetchAnnaCoversDownloaded()
             assert.are.equal(1, #helper.state.refreshes)
         end)
 
-        -- such as the next page's, which are downloaded ahead of it being turned to
+        -- For example the next page's, downloaded ahead.
         it("doesn't redraw the page when the covers that downloaded are all for another one", function()
             local menu = newMenu(11)
             for n = 1, 5 do
@@ -497,7 +524,7 @@ describe("BookMenu", function()
             menu:updateItems()
             helper.state.refreshes = {}
 
-            menu:onKindleFetchCoversDownloaded()
+            menu:onFetchAnnaCoversDownloaded()
             assert.are.equal(0, #helper.state.refreshes)
         end)
 

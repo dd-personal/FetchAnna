@@ -17,9 +17,9 @@ describe("CoverCache", function()
         data_dir = helper.tmpdir("data")
         helper.state.data_dir = data_dir
         helper.run("mkdir -p " .. helper.quote(data_dir .. "/settings"))
-        covers_dir = data_dir .. "/settings/kindlefetch_covers/"
-        CurlUtil = require("util.curlutil")
-        CoverCache = require("cache.covercache")
+        covers_dir = data_dir .. "/settings/fetchanna_covers/"
+        CurlUtil = require("fetchanna.util.curlutil")
+        CoverCache = require("fetchanna.cache.covercache")
     end)
 
     after_each(helper.cleanup)
@@ -32,11 +32,11 @@ describe("CoverCache", function()
         CoverCache:clear()
         assert.is_nil(CoverCache:get("abc"))
         assert.is_false(helper.exists(path))
-        -- and can be cleared again, empty
+        -- It can be cleared again when empty.
         CoverCache:clear()
     end)
 
-    -- which lfs.dir raises, and KOReader would exit on
+    -- lfs.dir raises an error, which KOReader would exit on.
     it("carries on when its folder can't be read", function()
         fixtures.cacheCover(helper, "abc")
         helper.stubs.lfs.dir = function(path)
@@ -62,7 +62,7 @@ describe("CoverCache", function()
         it("downloads and remembers a cover", function()
             CurlUtil.download = function(url, path, max_time)
                 assert.are.equal("https://covers.example/abc.jpg", url)
-                -- the download prompt waits for the cover, so a stalled one mustn't hold it up
+                -- The download prompt waits for the cover, so a stalled one mustn't hold it up.
                 assert.are.equal(10, max_time)
                 helper.writeFile(path, fixtures.JPEG)
                 return true
@@ -73,7 +73,7 @@ describe("CoverCache", function()
             assert.are.equal(covers_dir .. "abc.jpg", CoverCache:get("abc"))
         end)
 
-        -- e.g. a web page sent in its place, which would be kept for good, as covers are
+        -- For example a web page sent in its place, which would be kept for good.
         it("doesn't keep a cover that isn't an image", function()
             CurlUtil.download = function(_, path)
                 helper.writeFile(path, "<!DOCTYPE html><html><title>Not Found</title></html>")
@@ -135,7 +135,7 @@ describe("CoverCache", function()
         end)
 
         it("agrees with cacheExists for covers dropped from the cache", function()
-            -- older versions dropped covers from the cache once it was full, but left their files behind
+            -- Older versions dropped covers from a full cache but left their files behind.
             helper.writeFile(covers_dir .. "abc.jpg", fixtures.JPEG)
 
             assert.is_nil(CoverCache:get("abc"))
@@ -151,28 +151,28 @@ describe("CoverCache", function()
             os.remove(covers_dir .. "abc.jpg")
 
             assert.is_nil(CoverCache:get("abc"))
-            assert.is_nil(helper.state.settings_files[data_dir .. "/settings/kindlefetch_covercache.lua"].abc)
+            assert.is_nil(helper.state.settings_files[data_dir .. "/settings/fetchanna_covercache.lua"].abc)
         end)
     end)
 
-    -- which KOReader exited on, with every cover on the page left waiting for
+    -- Unhandled, KOReader would exit, with the page's covers still waited for.
     it("takes the placeholders away when the covers can't be downloaded, as the device's storage is full", function()
         CurlUtil.canFetch = function()
             return true
         end
         local results = {}
         local covers = { book("a", "https://covers.example/a.jpg") }
-        helper.writeFile(data_dir .. "/settings/tmp", "not a folder")
+        helper.writeFile(data_dir .. "/settings/fetchanna_tmp", "not a folder")
 
         assert.is_true(CoverCache:downloadMultiple(covers, 6, function(count)
             table.insert(results, count)
         end))
         assert.are.same({ 0 }, results)
         assert.is_false(CoverCache:isComing(covers[1]))
-        assert.are.same({ "KindleFetchCoversDownloaded" }, helper.state.broadcasts)
+        assert.are.same({ "FetchAnnaCoversDownloaded" }, helper.state.broadcasts)
     end)
 
-    -- which left every cover a placeholder on a device without curl, as a Kobo can be (#63)
+    -- Otherwise every cover stays a placeholder on a device without curl, as a Kobo can be (KindleFetch #63).
     it("downloads covers with KOReader's own HTTP where curl can't", function()
         helper.stubs.http.request = function(request)
             request.sink(fixtures.JPEG .. " " .. request.url)
@@ -196,7 +196,7 @@ describe("CoverCache", function()
     describe("downloadMultiple", function()
         local runs, results
 
-        -- pretend to be curl running in the background: the spec finishes each run with finishRun
+        -- Stands in for curl in the background: the spec finishes each run with finishRun.
         local function finishRun(run, succeeded, exit_code)
             for i, path in ipairs(run.paths) do
                 if succeeded[i] then
@@ -247,7 +247,7 @@ describe("CoverCache", function()
             assert.is_true(CoverCache:cacheExists("a"))
             assert.is_false(CoverCache:cacheExists("b"))
             assert.is_false(helper.exists(covers_dir .. "b.jpg"))
-            -- showing no placeholder for it
+            -- No placeholder is shown for it.
             assert.is_false(CoverCache:isComing(book("b", "https://covers.example/b.jpg")))
             assert.is_truthy(helper.logged("warn", "^left out the cover of b as it isn't an image: Not Found$"))
         end)
@@ -266,12 +266,12 @@ describe("CoverCache", function()
             assert.are.same({ "https://covers.example/new.jpg" }, runs[1].urls)
             assert.are.same({ covers_dir .. "new.jpg" }, runs[1].paths)
             assert.are.equal(6, runs[1].parallel_jobs)
-            -- one that has stalled mustn't keep its placeholder showing, or the next page's covers waiting
+            -- A stalled cover mustn't keep its placeholder, or hold up the next page's covers.
             assert.are.equal(10, runs[1].stall_time)
-            -- search results show placeholders, rather than a notification
+            -- Search results show placeholders, not a notification.
             assert.are.equal(0, #helper.state.notifications)
 
-            -- nothing happens until curl has finished
+            -- Nothing happens until curl has finished.
             helper.tick()
             assert.are.same({}, results)
             assert.is_false(CoverCache:cacheExists("new"))
@@ -280,15 +280,15 @@ describe("CoverCache", function()
             helper.tick()
             assert.are.same({ 1 }, results)
             assert.are.equal(covers_dir .. "new.jpg", CoverCache:get("new"))
-            -- so every open search result can show them
-            assert.are.same({ "KindleFetchCoversDownloaded" }, helper.state.broadcasts)
+            -- So every open list of results can show them.
+            assert.are.same({ "FetchAnnaCoversDownloaded" }, helper.state.broadcasts)
         end)
 
-        -- rather than once the slowest has, which curl can wait on for a while before giving up
+        -- Not once the slowest has, which curl can wait on for a while.
         describe("as they arrive", function()
             local results_file, cache_file
 
-            -- curl writes each cover's result as soon as it has downloaded
+            -- curl writes each cover's result as soon as it has downloaded.
             local function arrive(...)
                 local lines = {}
                 for _, result in ipairs({ ... }) do
@@ -302,7 +302,7 @@ describe("CoverCache", function()
 
             before_each(function()
                 results_file = data_dir .. "/settings/curl_config.txt.results"
-                cache_file = data_dir .. "/settings/kindlefetch_covercache.lua"
+                cache_file = data_dir .. "/settings/fetchanna_covercache.lua"
                 CoverCache:downloadMultiple({
                     book("a", "https://covers.example/a.jpg"),
                     book("b", "https://covers.example/b.jpg"),
@@ -315,21 +315,21 @@ describe("CoverCache", function()
                 helper.tick()
                 assert.are.equal(covers_dir .. "a.jpg", CoverCache:get("a"))
                 assert.is_true(CoverCache:isComing(book("b", "https://covers.example/b.jpg")))
-                assert.are.same({ "KindleFetchCoversDownloaded" }, helper.state.broadcasts)
+                assert.are.same({ "FetchAnnaCoversDownloaded" }, helper.state.broadcasts)
                 assert.are.same({}, results)
 
-                -- c stalls, and is given up on once curl has finished
+                -- c stalls, and is given up on once curl has finished.
                 arrive({ "a", 0 }, { "b", 0 }, { "c", 28 })
                 finishRun(runs[1], {}, 28)
                 helper.runScheduled()
                 assert.are.same({ 2 }, results)
                 assert.is_true(CoverCache:cacheExists("b"))
                 assert.is_false(CoverCache:isComing(book("c", "https://covers.example/c.jpg")))
-                -- so its placeholder can be taken away
+                -- So its placeholder can be taken away.
                 assert.are.equal(2, #helper.state.broadcasts)
             end)
 
-            -- each time, the screen is refreshed
+            -- Each time, the screen is refreshed.
             it("shows them at most once a second", function()
                 arrive({ "a", 0 })
                 helper.tick()
@@ -342,7 +342,7 @@ describe("CoverCache", function()
                 assert.are.equal(2, #helper.state.broadcasts)
                 assert.is_true(CoverCache:cacheExists("b"))
 
-                -- and not when nothing new has arrived
+                -- Not when nothing new has arrived.
                 helper.tick()
                 helper.tick()
                 assert.are.equal(2, #helper.state.broadcasts)
@@ -369,7 +369,7 @@ describe("CoverCache", function()
             end)
         end)
 
-        -- the cache holds 500 covers
+        -- The cache holds 500 covers.
         it("removes the file of a cover pushed out of the cache by newer ones", function()
             local covers = {}
             for i = 1, 500 do
@@ -378,7 +378,7 @@ describe("CoverCache", function()
                     value = covers_dir .. "old" .. i .. ".jpg",
                 }
             end
-            helper.state.settings_files[data_dir .. "/settings/kindlefetch_covercache.lua"] = covers
+            helper.state.settings_files[data_dir .. "/settings/fetchanna_covercache.lua"] = covers
             helper.writeFile(covers_dir .. "old1.jpg", fixtures.JPEG)
             helper.writeFile(covers_dir .. "old2.jpg", fixtures.JPEG)
 
@@ -391,7 +391,7 @@ describe("CoverCache", function()
             assert.is_true(helper.exists(covers_dir .. "old2.jpg"))
         end)
 
-        -- older versions forgot covers once the cache was full, without removing their files
+        -- Older versions forgot covers once the cache was full, leaving their files.
         it("removes covers left behind without being in the cache, once per session", function()
             fixtures.cacheCover(helper, "cached")
             helper.writeFile(covers_dir .. "orphan.jpg", fixtures.JPEG)
@@ -405,7 +405,7 @@ describe("CoverCache", function()
             assert.is_true(helper.exists(covers_dir .. "notes.txt"))
             assert.is_truthy(helper.logged("info", "^removed 2 covers that were no longer in the cache$"))
 
-            -- there are no more to find until the plugin is next updated, so it doesn't look again
+            -- No more appear until the plugin is next updated, so it doesn't look again.
             helper.writeFile(covers_dir .. "later.jpg", fixtures.JPEG)
             CoverCache:downloadMultiple({ book("another", "https://covers.example/another.jpg") }, 6, onDone)
             assert.is_true(helper.exists(covers_dir .. "later.jpg"))
@@ -485,8 +485,8 @@ describe("CoverCache", function()
             assert.are.same({ 0 }, results)
             assert.is_false(helper.exists(covers_dir .. "a.jpg"))
             assert.is_false(CoverCache:cacheExists("a"))
-            -- so the placeholders can be taken away
-            assert.are.same({ "KindleFetchCoversDownloaded" }, helper.state.broadcasts)
+            -- So the placeholders can be taken away.
+            assert.are.same({ "FetchAnnaCoversDownloaded" }, helper.state.broadcasts)
         end)
 
         it("keeps the covers that downloaded when others fail", function()
@@ -495,7 +495,7 @@ describe("CoverCache", function()
                 6,
                 onDone
             )
-            -- curl writes each cover's result next to its config file
+            -- curl writes each cover's result next to its config file.
             helper.writeFile(
                 data_dir .. "/settings/curl_config.txt.results",
                 "0 " .. covers_dir .. "a.jpg\n28 " .. covers_dir .. "b.jpg\n"
@@ -509,7 +509,7 @@ describe("CoverCache", function()
             assert.is_false(helper.exists(covers_dir .. "b.jpg"))
         end)
 
-        -- curl can finish just after its exit code was checked, before checking whether it's running
+        -- curl can finish between the exit code check and the running check.
         it("reads the exit code again once curl has stopped", function()
             CoverCache:downloadMultiple({ book("a", "https://covers.example/a.jpg") }, 6, onDone)
             CurlUtil.isPidRunning = function()
@@ -531,7 +531,7 @@ describe("CoverCache", function()
             assert.are.same({ 0 }, results)
         end)
 
-        -- which KOReader would have exited on, rather than taking the placeholders away
+        -- Unhandled, KOReader would exit instead of taking the placeholders away.
         it("gives up on the covers when checking on them goes wrong", function()
             CoverCache:downloadMultiple({ book("a", "https://covers.example/a.jpg") }, 6, onDone)
             CurlUtil.getExitCode = function()
@@ -541,9 +541,9 @@ describe("CoverCache", function()
 
             assert.are.same({ 0 }, results)
             assert.is_false(CoverCache:isComing(book("a", "https://covers.example/a.jpg")))
-            assert.are.same({ "KindleFetchCoversDownloaded" }, helper.state.broadcasts)
+            assert.are.same({ "FetchAnnaCoversDownloaded" }, helper.state.broadcasts)
             assert.is_truthy(helper.logged("err", "^checking on covers' downloads went wrong:.*unexpected"))
-            -- placeholders are all that would say so
+            -- Placeholders are all that would say so.
             assert.is_nil(helper.lastError())
         end)
 

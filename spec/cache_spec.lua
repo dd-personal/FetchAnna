@@ -1,12 +1,12 @@
 local helper = require("helper")
 
-describe("KindleFetchCache", function()
-    local data_dir, KindleFetchCache
+describe("FetchAnnaCache", function()
+    local data_dir, FetchAnnaCache
 
     local function newCache(opts)
         opts = opts or {}
         opts.filename = opts.filename or "test_cache.lua"
-        return KindleFetchCache:new(opts)
+        return FetchAnnaCache:new(opts)
     end
 
     local function cacheFile()
@@ -18,7 +18,7 @@ describe("KindleFetchCache", function()
         data_dir = helper.tmpdir("data")
         helper.state.data_dir = data_dir
         helper.state.time = 1000000
-        KindleFetchCache = require("cache.cache")
+        FetchAnnaCache = require("fetchanna.cache.cache")
     end)
 
     after_each(helper.cleanup)
@@ -65,7 +65,7 @@ describe("KindleFetchCache", function()
         assert.is_nil(cacheFile().key)
     end)
 
-    -- e.g. the mirrors looked up before, for when they can't be looked up again
+    -- For example the sites looked up before, for when they can't be looked up again.
     describe("keeping entries once they've expired", function()
         it("keeps them, for peek, rather than get, to return", function()
             local cache = newCache { expiry = 60, keep_expired = true }
@@ -74,7 +74,7 @@ describe("KindleFetchCache", function()
             helper.state.time = 1000061
 
             assert.is_nil(cache:get("key"))
-            -- however often the cache is saved
+            -- However often the cache is saved.
             cache:save()
             assert.are.equal("value", cache:peek("key"))
             assert.are.equal("value", cacheFile().key.value)
@@ -125,7 +125,7 @@ describe("KindleFetchCache", function()
         assert.are.equal("third", cache:get("c"))
     end)
 
-    -- e.g. saved by hand, or by a file that was cut short, which raised an error
+    -- For example edited by hand, or cut short. It mustn't raise an error.
     it("takes an entry saved without a time to have expired", function()
         helper.state.settings_files[data_dir .. "/settings/test_cache.lua"] = {
             key = { value = "value" },
@@ -137,7 +137,7 @@ describe("KindleFetchCache", function()
         assert.are.same({}, cacheFile())
     end)
 
-    -- which never happened, as no entry without a time was the oldest
+    -- Without a time, an entry would never count as the oldest.
     it("makes room by dropping the entries saved without a time first", function()
         helper.state.settings_files[data_dir .. "/settings/test_cache.lua"] = {
             a = { value = "first" },
@@ -149,8 +149,8 @@ describe("KindleFetchCache", function()
         assert.are.equal("third", cache:get("c"))
     end)
 
-    -- as an e-reader's can be when its battery runs flat: what was stored after that would have expired as it was
-    -- stored, or been the first to be pushed out
+    -- An e-reader's clock can go back when its battery runs flat. What's stored after that would otherwise expire at
+    -- once, or be the first pushed out.
     describe("once the clock has been put back", function()
         it("takes what was stored before to have expired, as how long ago can't be known", function()
             local cache = newCache { expiry = 60 }
@@ -317,7 +317,7 @@ describe("KindleFetchCache", function()
         end)
     end)
 
-    -- so the mirror that last worked is tried first
+    -- So the site that last worked is tried first.
     describe("moveValueToFront", function()
         it("puts one value first in a cached list, keeping when it was cached", function()
             local cache = newCache { expiry = 60 }
@@ -330,7 +330,7 @@ describe("KindleFetchCache", function()
                 { "https://c.example", "https://a.example", "https://b.example" },
                 cacheFile().mirrors.value
             )
-            -- it expires when it would have
+            -- It expires when it would have.
             assert.are.equal(1000000, cacheFile().mirrors.timestamp)
         end)
 
@@ -352,12 +352,12 @@ describe("KindleFetchCache", function()
             cache:moveValueToFront("https://z.example", "mirrors")
             cache:moveValueToFront("https://a.example", "missing")
             assert.are.same({ "https://a.example", "https://b.example" }, cache:get("mirrors"))
-            -- without writing the cache out
+            -- Without writing the cache out.
             assert.is_nil(cacheFile())
         end)
     end)
 
-    -- so a mirror that didn't answer is tried after the others
+    -- So a site that didn't answer is tried after the others.
     describe("moveValueToBack", function()
         it("puts one value last in a cached list, keeping when it was cached", function()
             local cache = newCache { expiry = 60 }
@@ -368,7 +368,7 @@ describe("KindleFetchCache", function()
             cache:moveValueToBack("https://a.example", "mirrors")
             assert.are.same({ "https://b.example", "https://c.example", "https://a.example" }, cache:get("mirrors"))
             assert.are.equal(1000000, cacheFile().mirrors.timestamp)
-            -- leaving lists already returned as they were
+            -- Lists already returned stay as they were.
             assert.are.same({ "https://a.example", "https://b.example", "https://c.example" }, mirrors)
         end)
 
@@ -393,7 +393,7 @@ describe("SearchCache", function()
         helper.reset()
         helper.state.data_dir = helper.tmpdir("data")
         helper.state.time = 1000000
-        SearchCache = require("cache.searchcache")
+        SearchCache = require("fetchanna.cache.searchcache")
     end)
 
     after_each(helper.cleanup)
@@ -402,7 +402,7 @@ describe("SearchCache", function()
         SearchCache:set({ "book" }, "libgen", "dune", 1, { "en" }, { "epub" }, { "fiction" })
 
         assert.are.same({ "book" }, SearchCache:get("libgen", "dune", 1, { "en" }, { "epub" }, { "fiction" }))
-        -- another site finds other books
+        -- Another site finds other books.
         assert.is_nil(SearchCache:get("archive", "dune", 1, { "en" }, { "epub" }, { "fiction" }))
         assert.is_nil(SearchCache:get("libgen", "dune", 2, { "en" }, { "epub" }, { "fiction" }))
         assert.is_nil(SearchCache:get("libgen", "dune", 1, { "en", "fr" }, { "epub" }, { "fiction" }))
@@ -417,46 +417,15 @@ describe("SearchCache", function()
     end)
 
     it("keeps searches for as long as set in the settings", function()
-        require("settings.settings"):setSearchCacheExpiryDays(1)
+        require("fetchanna.settings.settings"):setSearchCacheExpiryDays(1)
         SearchCache:set({ "book" }, "libgen", "dune", 1, { "en" }, { "epub" }, { "fiction" })
 
         helper.state.time = 1000000 + 24 * 60 * 60 + 1
         assert.is_nil(SearchCache:get("libgen", "dune", 1, { "en" }, { "epub" }, { "fiction" }))
     end)
 
-    -- the whole cache is read and written at once, so it's kept small
+    -- The whole cache is read and written at once, so it's kept small.
     it("keeps at most 100 searches", function()
         assert.are.equal(100, SearchCache.max_entries)
-    end)
-end)
-
-describe("UrlCache", function()
-    local UrlCache
-
-    before_each(function()
-        helper.reset()
-        helper.state.data_dir = helper.tmpdir("data")
-        helper.state.time = 1000000
-        UrlCache = require("cache.urlcache")
-    end)
-
-    after_each(helper.cleanup)
-
-    it("expires mirrors after a week", function()
-        UrlCache:set({ "https://libgen.example" }, "libgen")
-
-        helper.state.time = 1000000 + 7 * 24 * 60 * 60
-        assert.are.same({ "https://libgen.example" }, UrlCache:get("libgen"))
-
-        helper.state.time = 1000000 + 7 * 24 * 60 * 60 + 1
-        assert.is_nil(UrlCache:get("libgen"))
-    end)
-
-    it("keeps mirrors for as long as set in the settings", function()
-        UrlCache:set({ "https://libgen.example" }, "libgen")
-        helper.state.time = 1000000 + 7 * 24 * 60 * 60 + 1
-        require("settings.settings"):setMirrorCacheExpiryDays(30)
-
-        assert.are.same({ "https://libgen.example" }, UrlCache:get("libgen"))
     end)
 end)

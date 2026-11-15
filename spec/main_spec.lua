@@ -1,36 +1,33 @@
 local helper = require("helper")
 
-describe("KindleFetch", function()
-    local KindleFetch, checks, settings, searches, search_results, downloads, menus, settings_shown, cleared, plugin_dir
-    -- what was searched for on Internet Archive and Z-Library, rather than Library Genesis
-    local archive_searches, zlib_searches, gutenberg_searches
-    -- what Internet Archive and Z-Library find, by page, where it isn't what Library Genesis does (search_results)
+describe("FetchAnna", function()
+    local FetchAnna, checks, settings, searches, search_results, downloads, menus, settings_shown, cleared, plugin_dir
+    -- What Anna's Archive finds, by page, where a spec gives it in place of search_results.
     local site_results
-    -- whether Z-Library is logged into, and what to do once the login dialog shown since has logged in
-    local zlib_logged_in, zlib_logins
+    -- Whether there's a key (see the AnnasAccount stub), and how often the account page was shown.
+    local annas_has_key, accounts_shown
     local cancelled_downloads, curl_check_user_requested, leftovers_removed
-    -- the downloads the downloader says are in progress, and those it was asked to show the progress of
+    -- Downloads the downloader says are in progress, and those it was asked to show.
     local active_downloads, downloads_shown
-    -- whether searches can be called off, and the widget that calls each one off when tapped (false without one)
+    -- Whether searches can be called off, and the widget that calls each off (false without one).
     local can_cancel, trap_widgets
-    -- pages of results saved from earlier searches, as "query page"
+    -- Pages of results saved from earlier searches, as "query page".
     local saved
-    -- the settings' menus for choosing languages, file types and book types that were opened, and what each calls once
-    -- closed, and the lists of what the books found have to tick (see SettingsPage:tickSeveral)
+    -- The settings' menus opened for languages, file types and book types, with what each calls once closed, and the
+    -- tick lists for the books found (see SettingsPage:tickSeveral).
     local choosers, tick_lists
-    -- whether curl can look names up with encrypted DNS
+    -- Whether curl can look names up with encrypted DNS.
     local can_use_encrypted_dns
 
-    -- KOReader creates a new plugin instance for the file manager and for every book that is opened
+    -- KOReader creates a new plugin instance for the file manager and for every book opened.
     local opened
-    -- KOReader's file manager and reader, of which one is open at a time (the file manager here, until a spec
-    -- opens a book with readBook)
+    -- KOReader's file manager and reader. The file manager is open until a spec calls readBook.
     local FileManager, ReaderUI
-    -- how many times the file manager was refreshed, and the files the buttons from KOReader's file browser were
-    -- tapped for: to show their folders, add to collections and show the information of
+    -- How often the file manager was refreshed, and the files KOReader's buttons were tapped for: show folder, add to
+    -- collections, book information.
     local refreshes, folders_shown, collections_chosen, info_shown
 
-    -- KOReader's collections for the file manager or a book, noting the files added to them in chosen
+    -- Returns KOReader's collections, noting files added in chosen.
     local function collections(chosen)
         return {
             genAddToCollectionButton = function(_, file, caller_pre_callback)
@@ -60,7 +57,7 @@ describe("KindleFetch", function()
 
     local function openUI()
         opened = nil
-        return KindleFetch:new {
+        return FetchAnna:new {
             ui = {
                 menu = {
                     registerToMainMenu = function() end,
@@ -69,7 +66,7 @@ describe("KindleFetch", function()
         }
     end
 
-    -- close the file manager and open a book, as KOReader does
+    -- Closes the file manager and opens a book, as KOReader does.
     local function readBook()
         FileManager.instance = nil
         ReaderUI.instance = {
@@ -89,7 +86,6 @@ describe("KindleFetch", function()
         }
     end
 
-    -- the button in a row of buttons with the given text
     local function button(dialog, text)
         for _, row in ipairs(dialog.buttons) do
             for _, b in ipairs(row) do
@@ -101,21 +97,8 @@ describe("KindleFetch", function()
         error("no button " .. text)
     end
 
-    -- the button in a dialog with the given id, e.g. the search box's Sites button
-    local function buttonWithId(dialog, id)
-        for _, row in ipairs(dialog.buttons) do
-            for _, b in ipairs(row) do
-                if b.id == id then
-                    return b
-                end
-            end
-        end
-        error("no button " .. id)
-    end
-
-    -- do what starts a search (e.g. tapping Search or Load more), then let it run: each site's search starts once
-    -- KOReader has shown what's on screen (see MultiSearch), leaving what was waiting from before (e.g. checking for
-    -- updates) to wait
+    -- Does what starts a search (e.g. tapping Search or Load more), then lets it run. Each site's search starts once
+    -- KOReader has drawn the screen (see MultiSearch). What was scheduled before (e.g. the update check) stays waiting.
     local function andSearch(fn, ...)
         local from = #helper.state.scheduled
         fn(...)
@@ -133,9 +116,8 @@ describe("KindleFetch", function()
         end
     end
 
-    -- open the search dialog for the site (Library Genesis unless given) and search for query
-    local function search(plugin, query, source)
-        plugin:setupUI(nil, nil, { source or "libgen" })
+    local function search(plugin, query)
+        plugin:setupUI()
         plugin.search_box.input_text = query
         andSearch(button(plugin.search_box, "Search").callback)
     end
@@ -161,16 +143,13 @@ describe("KindleFetch", function()
             check_for_updates = true,
             languages = { "en" },
             file_types = { "epub" },
-            book_types = { "fiction" },
             recent_searches = {},
-            search_sources = { "libgen" },
         }
         searches, search_results, downloads, menus, settings_shown = {}, {}, {}, {}, 0
-        archive_searches, zlib_searches, gutenberg_searches, site_results = {}, {}, {}, {}
-        zlib_logged_in, zlib_logins = true, {}
+        site_results = {}
         saved = {}
 
-        helper.stub("settings.settings", {
+        helper.stub("fetchanna.settings.settings", {
             load = function() end,
             getShowBookCovers = function()
                 return settings.show_covers
@@ -199,18 +178,17 @@ describe("KindleFetch", function()
             getPreferredFileTypes = function()
                 return settings.file_types
             end,
-            getPreferredBookTypes = function()
-                return settings.book_types
+            getEbookFileTypes = function()
+                return { "epub", "mobi", "fb2" }
+            end,
+            getDocumentFileTypes = function()
+                return { "pdf", "djvu" }
+            end,
+            getComicFileTypes = function()
+                return { "cbz" }
             end,
             getRecentSearches = function()
                 return settings.recent_searches
-            end,
-            getSearchSources = function()
-                return { unpack(settings.search_sources) }
-            end,
-            setSearchSources = function(_, sources)
-                settings.search_sources = sources
-                return true
             end,
             addRecentSearch = function(_, query)
                 table.insert(settings.recent_searches, 1, query)
@@ -229,21 +207,15 @@ describe("KindleFetch", function()
 
         cleared = {
             search = 0,
-            mirrors = 0,
         }
-        helper.stub("cache.searchcache", {
+        helper.stub("fetchanna.cache.searchcache", {
             clear = function()
                 cleared.search = cleared.search + 1
             end,
         })
-        helper.stub("cache.urlcache", {
-            clear = function()
-                cleared.mirrors = cleared.mirrors + 1
-            end,
-        })
         plugin_dir = helper.tmpdir("plugin")
         helper.writeFile(plugin_dir .. "/version.txt", "0.4\n")
-        helper.stub("util.pathutil", {
+        helper.stub("fetchanna.util.pathutil", {
             getPluginPath = function()
                 return plugin_dir
             end,
@@ -254,7 +226,7 @@ describe("KindleFetch", function()
                 table.insert(choosers, { name = name, on_closed = on_closed })
             end
         end
-        helper.stub("settings.settingspage", {
+        helper.stub("fetchanna.settings.settingspage", {
             showSettings = function()
                 settings_shown = settings_shown + 1
             end,
@@ -274,7 +246,7 @@ describe("KindleFetch", function()
         })
         can_cancel, trap_widgets = true, {}
         local trap_widget
-        helper.stub("util.httputil", {
+        helper.stub("fetchanna.util.httputil", {
             CANCELLED = "request cancelled",
             canCancel = function()
                 return can_cancel
@@ -286,16 +258,16 @@ describe("KindleFetch", function()
                 return trap_widget
             end,
         })
-        helper.stub("api.lglisearch", {
-            NAME = "Library Genesis",
-            HAS_BOOK_TYPES = true,
-            SCOPES = { "title", "author", "isbn" },
+        -- Anna's Archive. It needs the key, which there is unless a spec says otherwise (see annassearch_spec.lua).
+        annas_has_key = true
+        helper.stub("fetchanna.api.annassearch", {
+            NAME = "Anna's Archive",
+            NEEDS_KEY = true,
             search = function(_, query, page, scope)
                 table.insert(searches, { query, page, scope })
-                table.insert(trap_widgets, require("util.httputil").getTrapWidget() or false)
-                -- books, error, the page to carry on from and how many results were read (or a function to run in
-                -- place of the search)
-                local result = search_results[page] or { {} }
+                table.insert(trap_widgets, require("fetchanna.util.httputil").getTrapWidget() or false)
+                -- Books, error, the next page and how many results were read, or a function to run instead.
+                local result = (site_results.annas or search_results)[page] or { {} }
                 if type(result) == "function" then
                     return result()
                 end
@@ -304,61 +276,39 @@ describe("KindleFetch", function()
             isCached = function(_, query, page)
                 return saved[query .. " " .. page] == true
             end,
-        })
-        -- which finds the same books, but has no book types
-        helper.stub("api.iasearch", {
-            NAME = "Internet Archive",
-            SCOPES = { "title", "author", "isbn" },
-            search = function(_, query, page, scope)
-                table.insert(archive_searches, { query, page, scope })
-                local result = (site_results.archive or search_results)[page] or { {} }
-                if type(result) == "function" then
-                    return result()
-                end
-                return result[1], result[2], result[3], result[4]
+            searchPath = function(query)
+                return "/search?q=" .. query
             end,
-            isCached = function()
-                return false
+            -- A simple version (see annassearch_spec.lua for what the real one takes).
+            md5From = function(text)
+                local md5 = text:match("/md5/(%x+)$") or text:match("^(%x+)$")
+                return md5 and #md5 == 32 and md5:lower() or nil
             end,
         })
-        helper.stub("api.zlibsearch", {
-            NAME = "Z-Library",
-            NEEDS_LOGIN = true,
-            search = function(_, query, page, scope)
-                table.insert(zlib_searches, { query, page, scope })
-                local result = (site_results.zlib or search_results)[page] or { {} }
-                if type(result) == "function" then
-                    return result()
-                end
-                return result[1], result[2], result[3], result[4]
-            end,
-            isCached = function()
-                return false
+        helper.stub("fetchanna.api.annasmirrors", {
+            SEARCH = "search",
+            SEARCH_FALLBACK = "https://annas-archive.gl",
+            candidates = function()
+                return { "https://annas-archive.gd" }
             end,
         })
-        -- which has neither book types nor ways to narrow a search down, like Z-Library, but needs no account
-        helper.stub("api.gutenbergsearch", {
-            NAME = "Project Gutenberg",
-            search = function(_, query, page, scope)
-                table.insert(gutenberg_searches, { query, page, scope })
-                local result = (site_results.gutenberg or search_results)[page] or { {} }
-                if type(result) == "function" then
-                    return result()
-                end
-                return result[1], result[2], result[3], result[4]
-            end,
-            isCached = function()
-                return false
+        helper.stub("fetchanna.api.annasaccount", {
+            STATUS = {
+                NO_KEY = "no_key",
+                UNVERIFIED = "unverified",
+                UNREACHABLE = "unreachable",
+                VALID = "valid",
+                LOGGED_IN = "logged_in",
+                INVALID = "invalid",
+            },
+            hasKey = function()
+                return annas_has_key
             end,
         })
-        helper.stub("api.zlibaccount", {
-            isLoggedIn = function()
-                return zlib_logged_in
-            end,
-        })
-        helper.stub("ui.zliblogin", {
-            show = function(on_logged_in)
-                table.insert(zlib_logins, on_logged_in)
+        accounts_shown = 0
+        helper.stub("fetchanna.ui.accountpage", {
+            show = function()
+                accounts_shown = accounts_shown + 1
             end,
         })
         cancelled_downloads = 0
@@ -367,7 +317,7 @@ describe("KindleFetch", function()
 
         refreshes, folders_shown, collections_chosen, info_shown = 0, {}, {}, {}
         FileManager = { instance = fileManager() }
-        -- each closing the dialog it's in first, with what it's given to
+        -- Each closes the dialog it's in first, with the callback it's given.
         helper.stub("apps/filemanager/filemanagerutil", {
             genShowFolderButton = function(file, caller_callback, button_disabled)
                 return {
@@ -397,7 +347,7 @@ describe("KindleFetch", function()
         }
         helper.stub("apps/filemanager/filemanager", FileManager)
         helper.stub("apps/reader/readerui", ReaderUI)
-        helper.stub("api.downloader", {
+        helper.stub("fetchanna.api.downloader", {
             cancelAllDownloads = function()
                 cancelled_downloads = cancelled_downloads + 1
             end,
@@ -417,7 +367,7 @@ describe("KindleFetch", function()
                 })
             end,
         })
-        helper.stub("ui.bookmenu", {
+        helper.stub("fetchanna.ui.bookmenu", {
             isSupported = function()
                 return true
             end,
@@ -430,15 +380,15 @@ describe("KindleFetch", function()
                 function menu:updateItems()
                     self.redrawn = (self.redrawn or 0) + 1
                 end
-                -- as KOReader's menu does once its X is tapped
+                -- As KOReader's menu does once its X is tapped.
                 function menu:onCloseAllMenus()
                     require("ui/uimanager"):close(self)
                     if self.close_callback then
                         self.close_callback()
                     end
                 end
-                -- like KOReader's menu, show other entries, turning to the page with the given one (2 to a page here)
-                -- (or staying on the page that's showing for a negative one)
+                -- Like KOReader's menu: shows the page with item_number (2 to a page here), or stays put when it's
+                -- negative.
                 function menu:switchItemTable(title, item_table, item_number)
                     self.title = title or self.title
                     self.item_table = item_table
@@ -450,10 +400,10 @@ describe("KindleFetch", function()
                 return menu
             end,
         })
-        helper.stub("cache.covercache", {})
+        helper.stub("fetchanna.cache.covercache", {})
         leftovers_removed = 0
         can_use_encrypted_dns = true
-        helper.stub("util.curlutil", {
+        helper.stub("fetchanna.util.curlutil", {
             getVersion = function()
                 return "8.17.0"
             end,
@@ -464,28 +414,28 @@ describe("KindleFetch", function()
                 leftovers_removed = leftovers_removed + 1
             end,
         })
-        helper.stub("updater.curlupdater", {
+        helper.stub("fetchanna.updater.curlupdater", {
             checkVersion = function(user_requested)
                 checks.curl = checks.curl + 1
                 curl_check_user_requested = user_requested
             end,
         })
-        helper.stub("updater.pluginupdater", {
+        helper.stub("fetchanna.updater.pluginupdater", {
             checkForUpdates = function(user_requested)
                 checks.plugin = checks.plugin + 1
                 checks.user_requested = user_requested
             end,
         })
 
-        -- KOReader loads main.lua once per session
-        KindleFetch = dofile("kindlefetch.koplugin/main.lua")
+        -- KOReader loads main.lua once per session.
+        FetchAnna = dofile("fetchanna.koplugin/main.lua")
     end)
 
     after_each(helper.cleanup)
 
     describe("exiting", function()
         it("cancels downloads when KOReader exits", function()
-            -- returning nothing lets the exit event carry on to the rest of KOReader
+            -- Returning nothing lets the exit event carry on to the rest of KOReader.
             assert.is_nil(openUI():onExit())
             assert.are.equal(1, cancelled_downloads)
         end)
@@ -495,10 +445,10 @@ describe("KindleFetch", function()
             assert.are.equal(1, cancelled_downloads)
         end)
 
-        -- so downloads wait for the device to wake up and Wi-Fi to come back, rather than failing
+        -- So downloads wait for wake-up and Wi-Fi, not fail.
         it("tells the downloader when the device sleeps and wakes, and Wi-Fi goes off and comes back", function()
             local told = {}
-            local Downloader = require("api.downloader")
+            local Downloader = require("fetchanna.api.downloader")
             for _, event in ipairs({ "onSuspend", "onResume", "onNetworkDisconnected", "onNetworkConnected" }) do
                 Downloader[event] = function()
                     table.insert(told, event)
@@ -506,14 +456,13 @@ describe("KindleFetch", function()
             end
             local plugin = openUI()
             for _, event in ipairs({ "onSuspend", "onResume", "onNetworkDisconnected", "onNetworkConnected" }) do
-                -- letting the event carry on to the rest of KOReader
+                -- The event carries on to the rest of KOReader.
                 assert.is_nil(plugin[event](plugin))
             end
             assert.are.same({ "onSuspend", "onResume", "onNetworkDisconnected", "onNetworkConnected" }, told)
         end)
 
-        -- as when the device is powered off or restarted, or its storage is shared over USB, which curl carried on
-        -- writing to
+        -- As on power-off, restart or USB storage sharing, when curl would carry on writing.
         it("cancels downloads when KOReader closes without exiting", function()
             active_downloads = { { id = "dune", title = "Dune" } }
             assert.is_nil(openUI():onClose())
@@ -522,22 +471,22 @@ describe("KindleFetch", function()
         end)
     end)
 
-    -- to make sense of a crash.log from someone's device
+    -- To make sense of a crash.log from someone's device.
     it("logs the versions and settings in use, once per session", function()
         openUI()
         openUI()
 
         local summaries = {}
         for _, log in ipairs(helper.state.logs) do
-            if log[1] == "info" and tostring(log[3]):find("^KindleFetch %S+ on KOReader") then
+            if log[1] == "info" and tostring(log[3]):find("^FetchAnna %S+ on KOReader") then
                 table.insert(summaries, log[3])
             end
         end
         assert.are.equal(1, #summaries)
-        assert.matches("KindleFetch 0.4 on KOReader .*, curl 8.17.0", summaries[1])
+        assert.matches("FetchAnna 0.4 on KOReader .*, curl 8.17.0", summaries[1])
     end)
 
-    -- KOReader may have closed while they were running
+    -- KOReader may have closed while they were running.
     it("removes the files left by earlier downloads, once per session", function()
         openUI()
         openUI()
@@ -545,11 +494,11 @@ describe("KindleFetch", function()
     end)
 
     describe("after an update", function()
-        it("clears cached searches and mirrors", function()
+        it("clears cached searches", function()
             settings.last_version = "0.3"
             openUI()
 
-            assert.are.same({ search = 1, mirrors = 1 }, cleared)
+            assert.are.same({ search = 1 }, cleared)
             assert.are.equal("0.4", settings.last_version)
         end)
 
@@ -557,13 +506,13 @@ describe("KindleFetch", function()
             settings.last_version = nil
             openUI()
 
-            assert.are.same({ search = 1, mirrors = 1 }, cleared)
+            assert.are.same({ search = 1 }, cleared)
             assert.are.equal("0.4", settings.last_version)
         end)
 
         it("keeps them while the version stays the same", function()
             openUI()
-            assert.are.same({ search = 0, mirrors = 0 }, cleared)
+            assert.are.same({ search = 0 }, cleared)
         end)
 
         it("only checks once per session", function()
@@ -572,7 +521,7 @@ describe("KindleFetch", function()
             settings.last_version = "0.2"
             openUI()
 
-            assert.are.same({ search = 1, mirrors = 1 }, cleared)
+            assert.are.same({ search = 1 }, cleared)
         end)
 
         it("does nothing when the installed version is unknown", function()
@@ -580,19 +529,19 @@ describe("KindleFetch", function()
             os.remove(plugin_dir .. "/version.txt")
             openUI()
 
-            assert.are.same({ search = 0, mirrors = 0 }, cleared)
+            assert.are.same({ search = 0 }, cleared)
             assert.are.equal("0.3", settings.last_version)
         end)
     end)
 
-    -- which KOReader left it out of its menu for, along with checking for updates
+    -- Otherwise KOReader leaves it out of its menu, along with checking for updates.
     it("shows what's left of its menu when it can't start", function()
         settings.download_dir = nil
-        require("settings.settings").load = function()
+        require("fetchanna.settings.settings").load = function()
             error("attempt to index a nil value")
         end
         local registered = {}
-        local plugin = KindleFetch:new {
+        local plugin = FetchAnna:new {
             ui = {
                 menu = {
                     registerToMainMenu = function(_, widget)
@@ -604,45 +553,24 @@ describe("KindleFetch", function()
         assert.are.same({ plugin }, registered)
         local menu_items = {}
         plugin:addToMainMenu(menu_items)
-        assert.are.equal("Kindle Fetch couldn't start", menu_items.kindlefetch.sub_item_table[1].text)
-        assert.is_truthy(helper.logged("err", "^could not start Kindle Fetch:.*attempt to index a nil value"))
+        assert.are.equal("FetchAnna couldn't start", menu_items.fetchanna.sub_item_table[1].text)
+        assert.is_truthy(helper.logged("err", "^could not start FetchAnna:.*attempt to index a nil value"))
     end)
 
     describe("init", function()
         it("registers a dispatcher action", function()
             openUI()
-            assert.are.equal("KindleFetch", helper.state.actions.kindlefetch_action.event)
+            assert.are.equal("FetchAnna", helper.state.actions.fetchanna_action.event)
         end)
 
         it("opens the search dialog when the dispatcher action is used", function()
             local plugin = openUI()
-            local event = helper.state.actions.kindlefetch_action.event
+            local event = helper.state.actions.fetchanna_action.event
 
-            -- KOReader calls the on<Event> handler for the action's event
+            -- KOReader calls the on<Event> handler for the action's event.
             assert.is_true(plugin["on" .. event](plugin))
             assert.are.equal(plugin.search_box, helper.lastShown())
             assert.are.equal("Search for books", plugin.search_box.title)
-            -- for the sites ticked in it last
-            assert.are.equal("Sites: Library Genesis", buttonWithId(plugin.search_box, "sites").text)
-        end)
-
-        it("registers a dispatcher action for searching Z-Library", function()
-            local plugin = openUI()
-            local action = helper.state.actions.kindlefetch_zlib_action
-            assert.are.equal("Kindle Fetch: search Z-Library", action.title)
-
-            assert.is_true(plugin["on" .. action.event](plugin))
-            assert.are.equal("Sites: Z-Library", buttonWithId(plugin.search_box, "sites").text)
-        end)
-
-        it("registers a dispatcher action for searching Internet Archive", function()
-            local plugin = openUI()
-            local action = helper.state.actions.kindlefetch_archive_action
-            assert.are.equal("Kindle Fetch: search Internet Archive", action.title)
-
-            assert.is_true(plugin["on" .. action.event](plugin))
-            assert.are.equal(plugin.search_box, helper.lastShown())
-            assert.are.equal("Sites: Internet Archive", buttonWithId(plugin.search_box, "sites").text)
         end)
 
         it("checks for updates once the UI is ready", function()
@@ -653,15 +581,15 @@ describe("KindleFetch", function()
             assert.are.same({ curl = 1, plugin = 1, user_requested = false }, checks)
         end)
 
-        -- which wasn't asked for, so isn't said
+        -- The check wasn't asked for, so nothing is said.
         it("only logs what goes wrong checking for updates", function()
-            helper.stub("updater.curlupdater", {
+            helper.stub("fetchanna.updater.curlupdater", {
                 checkVersion = function()
                     error("unexpected")
                 end,
             })
-            package.loaded["kindlefetch"] = nil
-            KindleFetch = dofile("kindlefetch.koplugin/main.lua")
+            package.loaded["fetchanna.plugin"] = nil
+            FetchAnna = dofile("fetchanna.koplugin/main.lua")
             openUI()
             helper.tick()
 
@@ -694,31 +622,31 @@ describe("KindleFetch", function()
             helper.runScheduled()
             assert.are.same({ curl = 0, plugin = 0 }, checks)
 
-            -- KOReader has been restarted a second later
-            KindleFetch = dofile("kindlefetch.koplugin/main.lua")
+            -- KOReader is restarted a second later.
+            FetchAnna = dofile("fetchanna.koplugin/main.lua")
             helper.state.time = 2000001
             openUI()
             helper.runScheduled()
             assert.are.same({ curl = 1, plugin = 1, user_requested = false }, checks)
         end)
 
-        -- even when the latest release couldn't be looked up, as on a Kindle whose curl is too old to, which offered to
-        -- update curl every time KOReader started (#57)
+        -- Even when the latest release couldn't be looked up, as on a Kindle whose curl is too old. Otherwise it offers
+        -- to update curl at every start (KindleFetch #57).
         it("waits a day after checking for updates, whether or not they could be looked up", function()
             helper.state.time = 2000000
             openUI()
             helper.runScheduled()
             assert.are.equal(2000000, settings.last_update_check)
 
-            -- KOReader has been restarted an hour later
-            KindleFetch = dofile("kindlefetch.koplugin/main.lua")
+            -- KOReader is restarted an hour later.
+            FetchAnna = dofile("fetchanna.koplugin/main.lua")
             helper.state.time = 2000000 + 60 * 60
             openUI()
             helper.runScheduled()
             assert.are.same({ curl = 1, plugin = 1, user_requested = false }, checks)
         end)
 
-        -- an e-reader's clock can be wrong, or be put right, between checks
+        -- An e-reader's clock can be wrong, or be put right, between checks.
         it("checks for updates when the last check appears to be in the future", function()
             helper.state.time = 2000000
             settings.last_update_check = 2000000 + 7 * 24 * 60 * 60
@@ -745,22 +673,22 @@ describe("KindleFetch", function()
         local function menuItem(plugin, text)
             local menu_items = {}
             plugin:addToMainMenu(menu_items)
-            assert.are.equal("Kindle Fetch", menu_items.kindlefetch.text)
-            for _, item in ipairs(menu_items.kindlefetch.sub_item_table) do
+            assert.are.equal("FetchAnna", menu_items.fetchanna.text)
+            for _, item in ipairs(menu_items.fetchanna.sub_item_table) do
                 if (item.text or item.text_func()) == text then
                     return item
                 end
             end
         end
 
-        -- which is in the settings (see SettingsPage:goBack)
+        -- That's in the settings (see SettingsPage:goBack).
         it("doesn't offer to go back to the version before", function()
             helper.writeFile(plugin_dir .. ".previous/main.lua", "-- v0.3")
             helper.writeFile(plugin_dir .. ".previous/version.txt", "0.3\n")
             assert.is_nil(menuItem(openUI(), "Go back to v0.3"))
         end)
 
-        -- where a download that was hidden can be shown again, without finding its book again
+        -- Where a hidden download can be shown again, without finding its book again.
         describe("downloads", function()
             local function downloading(title, percentage, status_text)
                 table.insert(active_downloads, {
@@ -777,7 +705,7 @@ describe("KindleFetch", function()
                 local item = menuItem(openUI(), "Downloads")
                 assert.is_false(item.enabled_func())
 
-                -- but says so if it is all the same, e.g. as the last download finishes
+                -- But says so if tapped anyway, for example as the last download finishes.
                 item.callback()
                 assert.are.equal("No downloads in progress", helper.lastNotification())
             end)
@@ -800,14 +728,14 @@ describe("KindleFetch", function()
 
             it("lists the books that are downloading when there are several, to choose which to show", function()
                 downloading("Dune", 0.456, "45% · 0.5 / 1.1 MB")
-                downloading("Emma", 0, "Waiting for Library Genesis...")
+                downloading("Emma", 0, "Waiting for Anna's Archive...")
                 downloading("Persuasion", 0, "2.0 MB")
                 menuItem(openUI(), "Downloads (3)").callback()
 
                 local dialog = helper.lastShown()
                 assert.are.equal("Downloads", dialog.title)
                 assert.are.same(
-                    { "Dune · 45%", "Emma · Waiting for Library Genesis...", "Persuasion · 2.0 MB" },
+                    { "Dune · 45%", "Emma · Waiting for Anna's Archive...", "Persuasion · 2.0 MB" },
                     { dialog.buttons[1][1].text, dialog.buttons[2][1].text, dialog.buttons[3][1].text }
                 )
 
@@ -817,24 +745,14 @@ describe("KindleFetch", function()
             end)
         end)
 
-        it("opens the search box, for the sites ticked in it last", function()
-            settings.search_sources = { "libgen", "archive" }
+        it("opens the search box", function()
             local plugin = openUI()
             menuItem(plugin, "Search").callback()
 
             assert.are.equal("Search for books", plugin.search_box.title)
             assert.are.equal(plugin.search_box, helper.lastShown())
-            assert.are.equal(
-                "Sites: Library Genesis and Internet Archive",
-                buttonWithId(plugin.search_box, "sites").text
-            )
-        end)
-
-        -- where the sites are chosen (see chooseSites)
-        it("has the one Search, rather than one for each site", function()
-            local plugin = openUI()
-            assert.is_nil(menuItem(plugin, "Search Library Genesis"))
-            assert.is_nil(menuItem(plugin, "Search Z-Library"))
+            -- It takes a book's link or MD5 too.
+            assert.are.equal("Title, author, or an Anna's Archive link or MD5", plugin.search_box.input_hint)
         end)
 
         it("opens the settings", function()
@@ -847,7 +765,7 @@ describe("KindleFetch", function()
             menuItem(openUI(), "Check for updates").callback()
 
             assert.are.same({ curl = 1, plugin = 1, user_requested = true }, checks)
-            -- so updating curl is offered again, even if it was turned down before
+            -- So updating curl is offered again, even if it was turned down before.
             assert.is_true(curl_check_user_requested)
             assert.are.equal("Checking for updates...", helper.lastNotification())
         end)
@@ -867,7 +785,7 @@ describe("KindleFetch", function()
     describe("searching", function()
         it("can be cancelled", function()
             local plugin = openUI()
-            plugin:setupUI("libgen")
+            plugin:setupUI()
             button(plugin.search_box, "Cancel").callback()
 
             assert.is_true(helper.wasClosed(plugin.search_box))
@@ -876,7 +794,7 @@ describe("KindleFetch", function()
 
         it("starts from the keyboard's enter key as well as the Search button", function()
             local plugin = openUI()
-            plugin:setupUI("libgen")
+            plugin:setupUI()
 
             local search_button = button(plugin.search_box, "Search")
             assert.is_true(search_button.is_enter_default)
@@ -890,14 +808,14 @@ describe("KindleFetch", function()
                 search(openUI(), "  dune  ")
                 assert.are.same({ "dune" }, settings.recent_searches)
 
-                -- but not when there's nothing to search for
+                -- Not when there's nothing to search for.
                 search(openUI(), "  ")
                 settings.languages = {}
                 search(openUI(), "emma")
                 assert.are.same({ "dune" }, settings.recent_searches)
             end)
 
-            -- which were remembered as they started
+            -- They're remembered once they find something, not as they start.
             it("aren't remembered when they fail, or find nothing, as with a typo", function()
                 search_results[1] = { nil, "request timed out" }
                 search(openUI(), "dune")
@@ -910,7 +828,7 @@ describe("KindleFetch", function()
                 settings.recent_searches = { "emma", "dune" }
                 search_results[1] = { { book("Emma") } }
                 local plugin = openUI()
-                plugin:setupUI(nil, nil, { "libgen" })
+                plugin:setupUI()
                 assert.is_true(button(plugin.search_box, "Recent").enabled)
                 button(plugin.search_box, "Recent").callback()
 
@@ -919,7 +837,7 @@ describe("KindleFetch", function()
                 assert.are.same({ "emma", "dune" }, { list.buttons[1][1].text, list.buttons[2][1].text })
                 andSearch(list.buttons[1][1].callback)
                 assert.is_true(helper.wasClosed(list))
-                -- in the search box too, to change it from there once the books are closed
+                -- In the search box too, to change it once the books are closed.
                 assert.are.equal("emma", plugin.search_box.input_text)
                 assert.are.same({ { "emma", 1 } }, searches)
                 assert.are.same({ "Emma" }, itemTexts(menus[1]))
@@ -927,10 +845,10 @@ describe("KindleFetch", function()
 
             it("can't be chosen before there are any", function()
                 local plugin = openUI()
-                plugin:setupUI(nil, nil, { "libgen" })
+                plugin:setupUI()
                 assert.is_false(button(plugin.search_box, "Recent").enabled)
 
-                -- until something has been found from the search box that's open
+                -- Until something has been found from the search box that's open.
                 search_results[1] = { { book("Dune") } }
                 local enabled = false
                 plugin.search_box.button_table = {
@@ -958,67 +876,19 @@ describe("KindleFetch", function()
             assert.are.equal(0, #searches)
         end)
 
-        it("searches the site the search box is for", function()
-            search_results[1] = { { book("Emma") } }
-            search(openUI(), "emma", "archive")
-
-            assert.are.same({ { "emma", 1 } }, archive_searches)
-            assert.are.same({}, searches)
-            assert.are.same({ "Emma" }, itemTexts(menus[1]))
-        end)
-
-        it("searches Z-Library as the site the search box is for", function()
-            search(openUI(), "1984", "zlib")
-            assert.are.same({ { "1984", 1 } }, zlib_searches)
-        end)
-
-        -- e.g. once Z-Library has logged Kindle Fetch out, which can be since the search box was opened
-        it("logs in to Z-Library again before searching it", function()
-            local plugin = openUI()
-            plugin:setupUI(nil, nil, { "zlib" })
-            zlib_logged_in = false
-            plugin.search_box.input_text = "1984"
-            andSearch(button(plugin.search_box, "Search").callback)
-            assert.are.same({}, zlib_searches)
-
-            zlib_logged_in = true
-            andSearch(zlib_logins[1])
-            assert.are.same({ { "1984", 1 } }, zlib_searches)
-        end)
-
-        -- which it doesn't have
-        it("searches Internet Archive with every book type turned off", function()
-            settings.book_types = {}
-            search(openUI(), "emma", "archive")
-
-            assert.are.same({ { "emma", 1 } }, archive_searches)
-            assert.is_nil(helper.lastError())
-        end)
-
-        it("loads more books from the site the search was on", function()
-            search_results[1] = { { book("Emma") }, nil, 2 }
-            search_results[2] = { { book("Emma, volume 2") } }
-            search(openUI(), "emma", "archive")
-            andSearch(menus[1].item_table[2].callback)
-
-            assert.are.same({ { "emma", 1 }, { "emma", 2 } }, archive_searches)
-            assert.are.same({}, searches)
-        end)
-
-        -- as nothing could be found
+        -- Nothing could be found.
         for _, preference in ipairs({
             { "languages", "language" },
             { "file_types", "file type" },
-            { "book_types", "book type" },
         }) do
             it("says when every " .. preference[2] .. " is turned off, rather than searching", function()
                 settings[preference[1]] = {}
                 search(openUI(), "dune")
 
                 assert.are.equal(0, #searches)
-                -- as the search box says when there's no search term
+                -- As the search box says when there's no search term.
                 assert.are.equal(
-                    "Turn on at least one " .. preference[2] .. " in Kindle Fetch's settings first",
+                    "Turn on at least one " .. preference[2] .. " in FetchAnna's settings first",
                     helper.lastNotification()
                 )
             end)
@@ -1057,41 +927,41 @@ describe("KindleFetch", function()
             assert.are.equal(menus[1], helper.lastShown())
         end)
 
-        -- KOReader carries on meanwhile, rather than being held up until Library Genesis has answered
-        describe("while waiting for Library Genesis", function()
+        -- KOReader isn't held up until Anna's Archive has answered.
+        describe("while waiting for Anna's Archive", function()
             local function message()
                 return helper.state.shown[2]
             end
 
             it("says which site it's searching", function()
-                search(openUI(), "emma", "archive")
-                assert.are.equal("Searching Internet Archive for\n“emma”...", message().title)
+                search(openUI(), "emma")
+                assert.are.equal("Searching Anna's Archive for\n“emma”...", message().title)
             end)
 
             it("says it's searching until the books are found, with a button to call it off", function()
                 search_results[1] = { { book("Dune") } }
                 search(openUI(), "dune")
 
-                assert.are.equal("Searching Library Genesis for\n“dune”...", message().title)
+                assert.are.equal("Searching Anna's Archive for\n“dune”...", message().title)
                 assert.are.equal("Cancel", message().buttons[1][1].text)
-                -- rather than any tap calling it off, which may have been meant for something else
+                -- Not any tap: one may have been meant for something else.
                 assert.is_false(message().dismissable)
-                -- or a second tap on what started the search landing on it
+                -- Or a second tap on what started the search landing on it.
                 assert.is_true(helper.state.input_inhibited)
                 assert.is_true(helper.wasClosed(message()))
                 assert.are.equal(0, #helper.state.notifications)
-                -- its Cancel calls the search off, which waits with a stand-in of its own (see MultiSearch)
+                -- Its Cancel calls the search off, which waits with a stand-in of its own (see MultiSearch).
                 assert.are.equal(1, #trap_widgets)
                 assert.are_not.equal(message(), trap_widgets[1])
-                assert.is_nil(require("util.httputil").getTrapWidget())
+                assert.is_nil(require("fetchanna.util.httputil").getTrapWidget())
             end)
 
             it("is called off with the message's Cancel button", function()
                 local dismissed = 0
                 local stand_in
                 search_results[1] = function()
-                    -- as Trapper:dismissablePopen does with what the page is waited for with
-                    stand_in = require("util.httputil").getTrapWidget()
+                    -- As Trapper:dismissablePopen does with what the page is waited for with.
+                    stand_in = require("fetchanna.util.httputil").getTrapWidget()
                     stand_in.dismiss_callback = function()
                         dismissed = dismissed + 1
                     end
@@ -1103,7 +973,7 @@ describe("KindleFetch", function()
                 assert.are.equal(1, dismissed)
                 assert.is_true(stand_in.cancelled)
                 assert.is_true(helper.wasClosed(message()))
-                -- once
+                -- Once.
                 local closes = 0
                 for _, closed in ipairs(helper.state.closed) do
                     closes = closes + (closed == message() and 1 or 0)
@@ -1112,14 +982,14 @@ describe("KindleFetch", function()
                 assert.are.equal(0, #menus)
             end)
 
-            -- which left the search going, and what it found shown once it was over
+            -- Otherwise the search carries on, and what it finds is shown once it's over.
             it("is called off when KOReader closes the message, as its Home key does", function()
                 local dismissed = 0
                 search_results[1] = function()
-                    require("util.httputil").getTrapWidget().dismiss_callback = function()
+                    require("fetchanna.util.httputil").getTrapWidget().dismiss_callback = function()
                         dismissed = dismissed + 1
                     end
-                    -- as ButtonDialog's onClose does, before closing it
+                    -- As ButtonDialog's onClose does, before closing it.
                     message().tap_close_callback()
                     return nil, "request cancelled"
                 end
@@ -1135,7 +1005,7 @@ describe("KindleFetch", function()
                 search_results[1] = { { book("Dune") } }
                 search(openUI(), "dune")
 
-                assert.are.equal("Searching Library Genesis for\n“dune”...", message().text)
+                assert.are.equal("Searching Anna's Archive for\n“dune”...", message().text)
                 assert.is_nil(message().buttons)
             end)
 
@@ -1148,7 +1018,7 @@ describe("KindleFetch", function()
                 assert.are.equal(0, #menus)
                 assert.are.equal(0, #helper.state.notifications)
                 assert.are.equal(2, #helper.state.shown)
-                -- the search box is still there to search again from
+                -- The search box is still there to search again from.
                 assert.is_false(helper.wasClosed(plugin.search_box))
             end)
 
@@ -1160,10 +1030,10 @@ describe("KindleFetch", function()
                 assert.are.equal(menus[1], helper.state.shown[2])
             end)
 
-            -- which was lost, as Trapper drops what goes wrong once its function has waited on something
+            -- Trapper drops errors once its function has waited on something, so this one would be lost.
             it("says so when showing the books found goes wrong", function()
                 search_results[1] = { { book("Dune") } }
-                require("ui.bookmenu").new = function()
+                require("fetchanna.ui.bookmenu").new = function()
                     error("attempt to call a nil value")
                 end
                 search(openUI(), "dune")
@@ -1183,11 +1053,11 @@ describe("KindleFetch", function()
                 search(openUI(), "dune")
 
                 assert.is_true(helper.wasClosed(message()))
-                assert.is_nil(require("util.httputil").getTrapWidget())
+                assert.is_nil(require("fetchanna.util.httputil").getTrapWidget())
                 assert.are.equal("Search failed: something went wrong, see crash.log", helper.lastError())
                 assert.matches(
                     "attempt to index a nil value",
-                    helper.logged("err", '^search of Library Genesis for "dune" went wrong')
+                    helper.logged("err", '^search of Anna\'s Archive for "dune" went wrong')
                 )
             end)
         end)
@@ -1209,17 +1079,17 @@ describe("KindleFetch", function()
             search(openUI(), "dune")
             assert.are.equal("dune · 1 book", menus[2].title)
 
-            -- with more to load
+            -- With more to load.
             search_results[1] = { { book("Dune") }, nil, 2 }
             search(openUI(), "dune")
             assert.are.equal("dune · 1+ books", menus[3].title)
         end)
 
-        -- whose results were blank, and whose covers failed to load, as its menu lacks what laying them out builds on
+        -- Otherwise results are blank and covers fail, as its menu lacks what the layout builds on.
         it(
             "lists the books as KOReader's own menu does, without covers, on a KOReader that can't lay them out",
             function()
-                require("ui.bookmenu").isSupported = function()
+                require("fetchanna.ui.bookmenu").isSupported = function()
                     return false
                 end
                 search_results[1] = { { book("Dune") }, nil, 2 }
@@ -1231,13 +1101,13 @@ describe("KindleFetch", function()
                 assert.are.equal(list, helper.lastShown())
                 assert.are.same({ "Dune · EPUB", "Load more" }, { list.item_table[1].text, list.item_table[2].text })
                 assert.is_nil(list.loadCoversForPage)
-                -- saying which are downloaded already, where KOReader's menu says such things
+                -- It says which are downloaded already, where KOReader's menu says such things.
                 assert.is_nil(list.item_table[1].mandatory_func())
                 assert.is_truthy(helper.logged("warn", "^showing results as a list without covers"))
             end
         )
 
-        -- rounded corners aren't painted, and show what was on screen before
+        -- Rounded corners aren't painted, and show what was on screen before.
         it("fills the screen with the books, to its corners", function()
             search_results[1] = { { book("Dune") } }
             search(openUI(), "dune")
@@ -1264,19 +1134,19 @@ describe("KindleFetch", function()
         end)
 
         it("reports search errors", function()
-            search_results[1] = { nil, "no Library Genesis urls available" }
+            search_results[1] = { nil, "no Anna's Archive urls available" }
             search(openUI(), "dune")
 
-            assert.are.equal("Search failed: no Library Genesis urls available", helper.lastError())
+            assert.are.equal("Search failed: no Anna's Archive urls available", helper.lastError())
             assert.are.equal(0, #menus)
         end)
 
-        -- in a message that stays, as it may come a while after the search was started
+        -- In a message that stays, as it may come long after the search started.
         it("says when nothing was found", function()
             search(openUI(), "dune")
 
             local explanation = helper.lastShown()
-            assert.are.equal("Library Genesis found no books for “dune”.", explanation.text)
+            assert.are.equal("Anna's Archive found no books for “dune”.", explanation.text)
             assert.is_true(explanation.no_ok_button)
             assert.are.equal("Close", explanation.cancel_text)
             assert.are.equal(0, #menus)
@@ -1284,23 +1154,11 @@ describe("KindleFetch", function()
         end)
 
         describe("offering what fixes a search that failed", function()
-            it("tries again, once the device is connected", function()
-                search_results[1] = { nil, "no internet connection" }
-                search(openUI(), "dune")
-                search_results[1] = { { book("Dune") } }
-
-                local again = helper.lastShown().other_buttons[1][1]
-                assert.are.equal("Try again", again.text)
-                andSearch(again.callback)
-                assert.are.same({ { "dune", 1 }, { "dune", 1 } }, searches)
-                assert.are.same({ "Dune" }, itemTexts(menus[1]))
-            end)
-
-            -- where the network's own DNS may be what's blocking them (#55)
+            -- The network's own DNS may be what's blocking them (KindleFetch #55).
             it(
                 "looks the sites up with encrypted DNS, then searches again, where the network can't find them",
                 function()
-                    search_results[1] = { nil, require("util.errors").UNFOUND }
+                    search_results[1] = { nil, require("fetchanna.util.errors").ANNAS_UNFOUND }
                     search(openUI(), "dune")
 
                     local encrypted_dns = helper.lastShown().other_buttons[1][1]
@@ -1312,115 +1170,137 @@ describe("KindleFetch", function()
             )
 
             it("only offers encrypted DNS where curl can look names up with it, and it's off", function()
-                search_results[1] = { nil, require("util.errors").UNFOUND }
+                local unfound = require("fetchanna.util.errors").ANNAS_UNFOUND
+                search_results[1] = { nil, unfound }
                 can_use_encrypted_dns = false
                 search(openUI(), "dune")
-                -- just the other sites
-                assert.are.equal("Search Z-Library", helper.lastShown().other_buttons[1][1].text)
+                -- Nothing to offer, so it's said as an error.
+                assert.matches("^Search failed: none of Anna's Archive's sites can be found", helper.lastError())
 
                 can_use_encrypted_dns = true
                 settings.encrypted_dns = true
                 search(openUI(), "dune")
-                assert.are.equal("Search Z-Library", helper.lastShown().other_buttons[1][1].text)
+                assert.are.equal("Search failed: " .. unfound, helper.lastError())
             end)
 
-            it("logs in again, then searches again, once Z-Library has logged Kindle Fetch out", function()
-                search_results[1] = { nil, "Z-Library has logged Kindle Fetch out, so log in again" }
-                search(openUI(), "1984", "zlib")
+            -- Anna's Archive's own refusals, such as its browser check, which FetchAnna never tries to get past.
+            describe("on Anna's Archive", function()
+                local Errors
 
-                local log_in = helper.lastShown().other_buttons[1][1]
-                assert.are.equal("Log in", log_in.text)
-                log_in.callback()
-                andSearch(zlib_logins[1])
-                assert.are.equal(2, #zlib_searches)
+                before_each(function()
+                    Errors = require("fetchanna.util.errors")
+                    annas_has_key = true
+                end)
+
+                it("asks for the key, where there isn't one", function()
+                    annas_has_key = false
+                    local plugin = openUI()
+                    plugin:setupUI(nil, nil, { "annas" })
+                    plugin.search_box.input_text = "dune"
+                    button(plugin.search_box, "Search").callback()
+                    assert.are.equal("Enter your Anna's Archive secret key first", helper.lastNotification())
+                    assert.are.equal(1, accounts_shown)
+                end)
+
+                it("offers to check the key, where it isn't accepted", function()
+                    site_results.annas = { { nil, Errors.ANNAS_KEY_REJECTED } }
+                    search(openUI(), "dune")
+                    local account = helper.lastShown().other_buttons[1][1]
+                    assert.are.equal("Account", account.text)
+                    account.callback()
+                    assert.are.equal(1, accounts_shown)
+                end)
+
+                it("says it asked for a browser check, offering its own search to open in a browser", function()
+                    helper.stub("ui/widget/qrmessage", helper.widgetClass())
+                    site_results.annas = { { nil, Errors.ANNAS_BLOCKED } }
+                    search(openUI(), "pride and prejudice")
+
+                    local failure = helper.lastShown()
+                    assert.matches("^Search failed: Anna's Archive asked for a browser check", failure.text)
+                    local browser = failure.other_buttons[1][1]
+                    assert.are.equal("Search in a Browser", browser.text)
+                    browser.callback()
+
+                    local dialog = helper.lastShown()
+                    assert.matches("https://annas%-archive%.gd/search%?q=pride and prejudice$", dialog.title)
+                    assert.are.equal("Show QR Code", dialog.buttons[1][1].text)
+                    dialog.buttons[1][1].callback()
+                    assert.are.equal("https://annas-archive.gd/search?q=pride and prejudice", helper.lastShown().text)
+                end)
+
+                it("shows the search's address alone where KOReader can't show a QR code", function()
+                    site_results.annas = { { nil, Errors.ANNAS_BLOCKED } }
+                    search(openUI(), "dune")
+                    helper.lastShown().other_buttons[1][1].callback()
+                    local dialog = helper.lastShown()
+                    assert.matches("https://annas%-archive%.gd/search%?q=dune$", dialog.title)
+                    assert.are.equal("Close", dialog.buttons[1][1].text)
+                    assert.are.equal(1, #dialog.buttons[1])
+                end)
+
+                -- As found in a browser, where Anna's Archive asks for its browser check.
+                it(
+                    "downloads a book asked for by its link or md5, in the file type chosen, without searching",
+                    function()
+                        annas_has_key = true
+                        local md5 = "0123456789abcdef0123456789abcdef"
+                        search(openUI(), "https://annas-archive.gd/md5/" .. md5:upper())
+
+                        local dialog = helper.lastShown()
+                        assert.matches("MD5 " .. md5 .. " from Anna's Archive as which file type", dialog.title)
+                        -- Those searched for come first.
+                        assert.are.equal("EPUB", dialog.buttons[1][1].text)
+                        assert.are.equal("Cancel", dialog.buttons[#dialog.buttons][1].text)
+                        dialog.buttons[1][1].callback()
+
+                        assert.are.equal(1, #downloads)
+                        assert.are.same(
+                            { source = "annas", id = md5, md5 = md5, title = md5, file_type = "epub" },
+                            downloads[1].book
+                        )
+                        assert.matches("/" .. md5 .. "%.epub$", downloads[1].filepath)
+                    end
+                )
+
+                -- Whatever the site calls the book, it mustn't lead out of the download folder.
+                it("saves a book in the download folder, whatever its title", function()
+                    local plugin = openUI()
+                    plugin:downloadBook({
+                        source = "annas",
+                        id = "0123456789abcdef0123456789abcdef",
+                        md5 = "0123456789abcdef0123456789abcdef",
+                        title = "../../../etc/passwd",
+                        file_type = "epub",
+                    })
+                    assert.are.equal("/mnt/us/documents/.._.._.._etc_passwd.epub", downloads[1].filepath)
+                end)
+
+                it("asks for the key before downloading a book asked for by its md5, where there's none", function()
+                    local plugin = openUI()
+                    annas_has_key = false
+                    search(plugin, "0123456789abcdef0123456789abcdef")
+                    helper.lastShown().buttons[1][1].callback()
+                    assert.are.equal(0, #downloads)
+                    assert.are.equal(1, accounts_shown)
+                end)
+
+                it("offers the account page where the account has no membership to download with", function()
+                    site_results.annas = { { nil, Errors.ANNAS_NOT_MEMBER } }
+                    search(openUI(), "dune")
+                    assert.are.equal("Account", helper.lastShown().other_buttons[1][1].text)
+                end)
             end)
         end)
 
-        describe("offering the other sites", function()
-            local function texts(row)
-                local result = {}
-                for _, b in ipairs(row) do
-                    table.insert(result, b.text)
-                end
-                return result
-            end
-
-            it("searches another site for the same thing when nothing was found", function()
-                local plugin = openUI()
-                search(plugin, "dune")
-                local first_box = plugin.search_box
-                local explanation = helper.lastShown()
-                assert.are.same(
-                    { "Search Z-Library", "Search Internet Archive", "Search Project Gutenberg" },
-                    texts(explanation.other_buttons[1])
-                )
-
-                explanation.other_buttons[1][2].callback()
-                -- once the message has closed
-                assert.are.same({}, archive_searches)
-                helper.tick()
-                helper.tick()
-                assert.is_true(helper.wasClosed(first_box))
-                assert.are.equal("Sites: Internet Archive", buttonWithId(plugin.search_box, "sites").text)
-                assert.are.equal("dune", plugin.search_box.input)
-                assert.are.same({ { "dune", 1 } }, archive_searches)
-            end)
-
-            -- as it can only be searched with an account
-            it("only offers Z-Library once logged in", function()
-                zlib_logged_in = false
-                search(openUI(), "dune")
-                assert.are.same(
-                    { "Search Internet Archive", "Search Project Gutenberg" },
-                    texts(helper.lastShown().other_buttons[1])
-                )
-            end)
-
-            it("offers them when a search fails", function()
-                search_results[1] = { nil, "all Library Genesis mirrors failed" }
-                search(openUI(), "dune")
-
-                local failure = helper.lastShown()
-                assert.are.equal("Search failed: all Library Genesis mirrors failed", failure.text)
-                assert.are.equal("notice-warning", failure.icon)
-                assert.are.same(
-                    { "Search Z-Library", "Search Internet Archive", "Search Project Gutenberg" },
-                    texts(failure.other_buttons[1])
-                )
-            end)
-
-            -- which they'd fail for too
-            it("doesn't offer them when the device isn't connected", function()
-                search_results[1] = { nil, "no internet connection" }
-                search(openUI(), "dune")
-
-                assert.are.equal("Search failed: no internet connection", helper.lastError())
-                -- just trying again (see the fixes errors offer)
-                assert.are.same({ "Try again" }, texts(helper.lastShown().other_buttons[1]))
-                assert.are.equal(1, #helper.lastShown().other_buttons)
-            end)
-
-            it("offers them when the site listed results, but none in the languages and file types chosen", function()
-                search_results[1] = { {}, nil, 2, 37 }
-                search(openUI(), "emma", "archive")
-
-                local other_buttons = helper.lastShown().other_buttons
-                assert.are.same({ "Keep searching" }, texts(other_buttons[1]))
-                assert.are.same(
-                    { "Search Z-Library", "Search Library Genesis", "Search Project Gutenberg" },
-                    texts(other_buttons[2])
-                )
-            end)
-        end)
-
-        -- which was said to have failed, rather than offering the settings
+        -- It isn't said to have failed: the settings are offered.
         it("offers the settings when the site has none of the file types chosen", function()
             search_results[1] = { nil, "none of the file types chosen in the settings" }
-            search(openUI(), "emma", "archive")
+            search(openUI(), "emma")
 
             local explanation = helper.lastShown()
             assert.are.equal(
-                "Internet Archive doesn't have books in any of the file types chosen in Kindle Fetch's settings.",
+                "Anna's Archive doesn't have books in any of the file types chosen in FetchAnna's settings.",
                 explanation.text
             )
             assert.are.equal("Settings", explanation.ok_text)
@@ -1429,38 +1309,26 @@ describe("KindleFetch", function()
             assert.are.equal(1, settings_shown)
         end)
 
-        -- which is why most searches that find nothing do
-        describe("when Library Genesis lists results, but none in the languages and file types chosen", function()
+        -- Most searches that find nothing do so for this reason.
+        describe("when Anna's Archive lists results, but none in the languages and file types chosen", function()
             it("says so, and offers the settings", function()
                 search_results[1] = { {}, nil, nil, 37 }
                 search(openUI(), "dune")
 
                 local explanation = helper.lastShown()
                 assert.are.equal(
-                    "Library Genesis listed 37 results, but none in the languages and file types chosen in Kindle "
-                        .. "Fetch's settings.",
+                    "Anna's Archive listed 37 results, but none in the languages and file types chosen in "
+                        .. "FetchAnna's settings.",
                     explanation.text
                 )
                 assert.are.equal("Settings", explanation.ok_text)
                 assert.are.equal("Close", explanation.cancel_text)
-                -- there are no more results to look through, just the other sites
-                assert.are.equal(1, #explanation.other_buttons)
-                assert.are.equal("Search Z-Library", explanation.other_buttons[1][1].text)
+                -- There are no more results to look through.
+                assert.are.equal(0, #explanation.other_buttons)
                 assert.are.equal(0, #menus)
 
                 explanation.ok_callback()
                 assert.are.equal(1, settings_shown)
-            end)
-
-            it("says which site listed them", function()
-                search_results[1] = { {}, nil, nil, 37 }
-                search(openUI(), "emma", "archive")
-
-                assert.are.equal(
-                    "Internet Archive listed 37 results, but none in the languages and file types chosen in Kindle "
-                        .. "Fetch's settings.",
-                    helper.lastShown().text
-                )
             end)
 
             it("offers to keep searching while there are more results to look through", function()
@@ -1476,7 +1344,7 @@ describe("KindleFetch", function()
                 assert.are.same({ "Dune", "Load more" }, itemTexts(menus[1]))
             end)
 
-            -- which searched straight away, as Wi-Fi may have gone off since
+            -- Wi-Fi may have gone off since the search started.
             it("turns on Wi-Fi before searching on, when it's off", function()
                 search_results[1] = { {}, nil, 6, 500 }
                 search_results[6] = { { book("Dune") } }
@@ -1494,353 +1362,14 @@ describe("KindleFetch", function()
         end)
     end)
 
-    -- ticked in the search box, each searched at once, their books shown as soon as any are found (see MultiSearch)
-    describe("searching several sites", function()
-        local plugin
-
-        before_each(function()
-            settings.search_sources = { "libgen", "archive" }
-            plugin = openUI()
-        end)
-
-        local function searchSites(query)
-            plugin:setupUI()
-            plugin.search_box.input_text = query
-            andSearch(button(plugin.search_box, "Search").callback)
-        end
-
-        local function texts(row)
-            local result = {}
-            for _, b in ipairs(row) do
-                table.insert(result, b.text)
-            end
-            return result
-        end
-
-        it("searches every site ticked, saying which it's searching", function()
-            searchSites("emma")
-            assert.are.same({ { "emma", 1 } }, searches)
-            assert.are.same({ { "emma", 1 } }, archive_searches)
-            assert.are.same({}, zlib_searches)
-            assert.are.equal(
-                "Searching Library Genesis and Internet Archive for\n“emma”...",
-                helper.state.shown[2].title
-            )
-        end)
-
-        -- rather than once the slowest site has answered
-        it("shows each site's books as soon as it has found them, saying which are still being searched", function()
-            search_results[1] = { { book("Dune") } }
-            local shown_meanwhile
-            site_results.archive = {
-                function()
-                    shown_meanwhile = { title = menus[1].title, items = itemTexts(menus[1]) }
-                    return { book("Emma") }
-                end,
-            }
-            searchSites("x")
-
-            assert.are.same({ "Dune", "Still searching Internet Archive…" }, shown_meanwhile.items)
-            assert.are.equal("x · 1+ books", shown_meanwhile.title)
-            -- once the first books were showing, rather than over them
-            assert.is_true(helper.wasClosed(helper.state.shown[2]))
-            assert.are.same({ "Dune", "Emma" }, itemTexts(menus[1]))
-            assert.are.equal("x · 2 books", menus[1].title)
-            assert.are.equal(1, #menus)
-        end)
-
-        it("says which site each book was found on", function()
-            local dune, emma = book("Dune"), book("Emma")
-            dune.source, emma.source = "libgen", "archive"
-            search_results[1] = { { dune } }
-            site_results.archive = { { { emma } } }
-            searchSites("x")
-
-            assert.are.equal("Dune · EPUB · Library Genesis", menus[1].item_table[1].text)
-            assert.are.equal("Internet Archive", menus[1].source_name(emma))
-        end)
-
-        it("says over the books found when a site fails", function()
-            search_results[1] = { { book("Dune") } }
-            site_results.archive = { { nil, "request timed out" } }
-            searchSites("x")
-
-            assert.are.same({ "Dune" }, itemTexts(menus[1]))
-            assert.are.equal("Searching Internet Archive failed: request timed out", helper.lastError())
-        end)
-
-        -- once there are books to say so over
-        it("says a site that failed before any books were found did, once they are", function()
-            search_results[1] = { nil, "request timed out" }
-            site_results.archive = { { { book("Emma") } } }
-            searchSites("x")
-
-            assert.are.same({ "Emma" }, itemTexts(menus[1]))
-            assert.are.equal("Searching Library Genesis failed: request timed out", helper.lastError())
-        end)
-
-        it("says why each site failed, when none found books, offering the sites that weren't searched", function()
-            search_results[1] = { nil, "request timed out" }
-            site_results.archive = { { nil, "no response" } }
-            searchSites("x")
-
-            local failure = helper.lastShown()
-            assert.are.equal(
-                "Search failed:\nLibrary Genesis: request timed out\nInternet Archive: no response",
-                failure.text
-            )
-            assert.are.same({ "Search Z-Library", "Search Project Gutenberg" }, texts(failure.other_buttons[1]))
-            assert.are.equal(0, #menus)
-        end)
-
-        it("says none of them found any books", function()
-            searchSites("x")
-            local explanation = helper.lastShown()
-            assert.are.equal("Library Genesis and Internet Archive found no books for “x”.", explanation.text)
-            assert.are.same({ "Search Z-Library", "Search Project Gutenberg" }, texts(explanation.other_buttons[1]))
-        end)
-
-        it(
-            "adds up the results they listed in other languages and file types, keeping searching those with more",
-            function()
-                search_results[1] = { {}, nil, 2, 25 }
-                site_results.archive = { { {}, nil, nil, 50 } }
-                searchSites("x")
-
-                local explanation = helper.lastShown()
-                assert.are.equal(
-                    "Library Genesis and Internet Archive listed 75 results, but none in the languages and file types "
-                        .. "chosen in Kindle Fetch's settings.",
-                    explanation.text
-                )
-                search_results[2] = { { book("Dune") } }
-                andSearch(explanation.other_buttons[1][1].callback)
-                assert.are.same({ { "x", 1 }, { "x", 2 } }, searches)
-                assert.are.equal(1, #archive_searches)
-                assert.are.same({ "Dune" }, itemTexts(menus[1]))
-            end
-        )
-
-        it("calls every site's search off with the message's Cancel", function()
-            search_results[1] = function()
-                helper.state.shown[2].buttons[1][1].callback()
-                return nil, "request cancelled"
-            end
-            searchSites("x")
-
-            assert.are.same({}, archive_searches)
-            assert.are.equal(0, #menus)
-            assert.are.equal(0, #helper.state.notifications)
-        end)
-
-        -- whose books would have nowhere to go
-        it("calls off the sites still being searched once the books found are closed", function()
-            settings.search_sources = { "libgen", "archive", "gutenberg" }
-            search_results[1] = { { book("Dune") } }
-            local called_off
-            site_results.archive = {
-                function()
-                    menus[1]:onCloseAllMenus()
-                    called_off = require("util.httputil").getTrapWidget().cancelled
-                    return nil, "request cancelled"
-                end,
-            }
-            searchSites("x")
-
-            assert.is_true(called_off)
-            assert.is_true(helper.wasClosed(menus[1]))
-            -- nor started, where it hadn't been
-            assert.are.same({}, gutenberg_searches)
-            assert.is_nil(helper.lastError())
-            assert.are.equal(1, #menus)
-        end)
-
-        it("loads more from each site that has more", function()
-            search_results[1] = { { book("Dune") }, nil, 2 }
-            search_results[2] = { { book("Dune Messiah") } }
-            site_results.archive = { { { book("Emma") }, nil, 2 }, { { book("Persuasion") } } }
-            searchSites("x")
-            assert.are.same({ "Dune", "Emma", "Load more" }, itemTexts(menus[1]))
-
-            local items = menus[1].item_table
-            andSearch(items[#items].callback)
-            assert.are.same({ { "x", 1 }, { "x", 2 } }, searches)
-            assert.are.same({ { "x", 1 }, { "x", 2 } }, archive_searches)
-            assert.are.same({ "Dune", "Emma", "Dune Messiah", "Persuasion" }, itemTexts(menus[1]))
-        end)
-
-        it("only loads more from the sites that have more", function()
-            search_results[1] = { { book("Dune") }, nil, 2 }
-            search_results[2] = { { book("Dune Messiah") } }
-            site_results.archive = { { { book("Emma") } } }
-            searchSites("x")
-
-            local items = menus[1].item_table
-            andSearch(items[#items].callback)
-            assert.are.equal(2, #searches)
-            assert.are.equal(1, #archive_searches)
-        end)
-
-        -- as it can only be searched with an account, which every search would ask for
-        it("leaves Z-Library out while it isn't logged into, rather than asking to log in", function()
-            settings.search_sources = { "zlib", "libgen" }
-            zlib_logged_in = false
-            searchSites("x")
-            assert.are.same({ { "x", 1 } }, searches)
-            assert.are.same({}, zlib_searches)
-            assert.are.same({}, zlib_logins)
-        end)
-
-        it("logs in to Z-Library first, where it's the only site ticked", function()
-            settings.search_sources = { "zlib" }
-            zlib_logged_in = false
-            searchSites("x")
-            assert.are.same({}, zlib_searches)
-            assert.are.equal(1, #zlib_logins)
-
-            zlib_logged_in = true
-            andSearch(zlib_logins[1])
-            assert.are.equal(1, #zlib_searches)
-        end)
-    end)
-
-    -- in the search box, ticked in a menu of their own, and searched from then on
-    describe("choosing the sites to search", function()
-        local function sitesMenu(plugin)
-            buttonWithId(plugin.search_box, "sites").callback()
-            return helper.lastShown()
-        end
-
-        local function rowTexts(dialog)
-            local texts = {}
-            for _, row in ipairs(dialog.buttons) do
-                table.insert(texts, row[1].text)
-            end
-            return texts
-        end
-
-        it("ticks and unticks them, searching those ticked from then on", function()
-            local plugin = openUI()
-            plugin:setupUI()
-            local menu = sitesMenu(plugin)
-            assert.are.equal("Search on", menu.title)
-            assert.are.same(
-                { "Z-Library", "✓ Library Genesis", "Internet Archive", "Project Gutenberg" },
-                rowTexts(menu)
-            )
-
-            menu.buttons[3][1].callback()
-            assert.are.same(
-                { "Z-Library", "✓ Library Genesis", "✓ Internet Archive", "Project Gutenberg" },
-                rowTexts(menu)
-            )
-            assert.are.equal(
-                "Sites: Library Genesis and Internet Archive",
-                buttonWithId(plugin.search_box, "sites").text
-            )
-            assert.are.same({ "libgen", "archive" }, settings.search_sources)
-
-            menu.buttons[2][1].callback()
-            assert.are.same({ "archive" }, settings.search_sources)
-            plugin.search_box.input_text = "emma"
-            andSearch(button(plugin.search_box, "Search").callback)
-            assert.are.same({}, searches)
-            assert.are.same({ { "emma", 1 } }, archive_searches)
-        end)
-
-        it("keeps at least one ticked", function()
-            local plugin = openUI()
-            plugin:setupUI()
-            sitesMenu(plugin).buttons[2][1].callback()
-
-            assert.are.equal("Choose at least one site to search", helper.lastNotification())
-            assert.are.same({ "libgen" }, settings.search_sources)
-        end)
-
-        it("says when they're all ticked", function()
-            settings.search_sources = { "zlib", "gutenberg", "libgen", "archive" }
-            local plugin = openUI()
-            plugin:setupUI()
-            assert.are.equal("Sites: All", buttonWithId(plugin.search_box, "sites").text)
-        end)
-
-        -- as it can only be searched with an account
-        it("logs in to Z-Library before ticking it", function()
-            zlib_logged_in = false
-            local plugin = openUI()
-            plugin:setupUI()
-            local menu = sitesMenu(plugin)
-            assert.are.equal("Z-Library (log in)", menu.buttons[1][1].text)
-
-            menu.buttons[1][1].callback()
-            assert.is_true(helper.wasClosed(menu))
-            assert.are.same({ "libgen" }, settings.search_sources)
-            zlib_logged_in = true
-            zlib_logins[1]()
-            assert.are.same({ "zlib", "libgen" }, settings.search_sources)
-            assert.are.equal("Sites: Z-Library and Library Genesis", buttonWithId(plugin.search_box, "sites").text)
-        end)
-
-        -- which it is to begin with, as every site is
-        it("shows Z-Library unticked while it isn't logged into, though it's ticked to be searched", function()
-            settings.search_sources = { "zlib", "libgen", "archive", "gutenberg" }
-            zlib_logged_in = false
-            local plugin = openUI()
-            plugin:setupUI()
-            assert.are.equal("Sites: All but Z-Library", buttonWithId(plugin.search_box, "sites").text)
-            assert.are.equal("Z-Library (log in)", sitesMenu(plugin).buttons[1][1].text)
-
-            zlib_logged_in = true
-            plugin:setupUI()
-            assert.are.equal("Sites: All", buttonWithId(plugin.search_box, "sites").text)
-        end)
-    end)
-
-    -- e.g. only the books' authors, on the sites that can be
+    -- For example only the books' authors, on the sites that can be.
     describe("narrowing a search down", function()
-        it("searches what's chosen in the search box", function()
-            local plugin = openUI()
-            plugin:setupUI(nil, nil, { "libgen" })
-            local scope = button(plugin.search_box, "Search in: All")
-            assert.are.equal("scope", scope.id)
-
-            scope.callback()
-            local chooser = helper.lastShown()
-            assert.are.equal("✓ All", chooser.buttons[1][1].text)
-            assert.are.equal("Author", chooser.buttons[1][3].text)
-            chooser.buttons[1][3].callback()
-            assert.is_true(helper.wasClosed(chooser))
-            assert.are.equal("Search in: Author", scope.text)
-
-            plugin.search_box.input_text = "herbert"
-            andSearch(button(plugin.search_box, "Search").callback)
-            assert.are.same({ { "herbert", 1, "author" } }, searches)
-        end)
-
-        -- which can't be
-        it("searches everything on Z-Library", function()
-            andSearch(openUI().setupUI, openUI(), "1984", "author", { "zlib" }, true)
-            assert.are.same({ { "1984", 1 } }, zlib_searches)
-        end)
-
-        it("searches the other sites narrowed down as this one was, where they can be", function()
-            local plugin = openUI()
-            andSearch(plugin.setupUI, plugin, "herbert", "author", { "libgen" }, true)
-            local explanation = helper.lastShown()
-            -- Internet Archive, after Z-Library
-            explanation.other_buttons[1][2].callback()
-            helper.tick()
-            helper.tick()
-            assert.are.same({ { "herbert", 1, "author" } }, archive_searches)
-            assert.are.equal("Search in: Author", button(plugin.search_box, "Search in: Author").text)
-        end)
-
-        it("searches the authors' names for more by an author", function()
+        -- Anna's Archive can't be narrowed down to authors, so it searches everything.
+        it("searches for the author's name for more by an author", function()
             local plugin = openUI()
             plugin:searchFor("Frank Herbert", "author")
-            assert.are.equal("Search in: Author", buttonWithId(plugin.search_box, "scope").text)
             andSearch(button(plugin.search_box, "Search").callback)
-            assert.are.same({ { "Frank Herbert", 1, "author" } }, searches)
+            assert.are.same({ { "Frank Herbert", 1 } }, searches)
         end)
     end)
 
@@ -1853,26 +1382,25 @@ describe("KindleFetch", function()
             return result
         end
 
-        -- to choose the sites to search, as for any other search
+        -- To search for once it's been looked at, as for any other search.
         it("opens the search box with what's given in it, on one line", function()
             local plugin = openUI()
             plugin:searchFor("  Frank\n  Herbert ")
 
             assert.are.equal(plugin.search_box, helper.lastShown())
             assert.are.equal("Frank Herbert", plugin.search_box.input)
-            assert.are.equal("Sites: Library Genesis", buttonWithId(plugin.search_box, "sites").text)
             assert.are.same({}, searches)
             andSearch(button(plugin.search_box, "Search").callback)
             assert.are.same({ { "Frank Herbert", 1 } }, searches)
         end)
 
-        -- as a whole paragraph can't be searched for
+        -- A whole paragraph can't be searched for.
         it("searches for the start of what's long, up to a space", function()
             local plugin = openUI()
             plugin:searchFor(string.rep("word ", 30))
             assert.are.equal(string.rep("word ", 19) .. "word", plugin.search_box.input)
 
-            -- or between characters, rather than partway through one
+            -- Or between characters, not partway through one.
             plugin:searchFor(string.rep("é", 60))
             assert.are.equal(string.rep("é", 50), plugin.search_box.input)
             plugin:searchFor("a" .. string.rep("é", 60))
@@ -1907,17 +1435,16 @@ describe("KindleFetch", function()
                 openUI()
                 openUI()
 
-                -- once a session
+                -- Once a session.
                 assert.are.equal(4, #added)
                 assert.are.equal(FileManager, added[1].widget)
                 assert.are.equal(widgets.filemanagerhistory, added[2].widget)
-                assert.are.equal("kindlefetch", added[1].row_id)
+                assert.are.equal("fetchanna", added[1].row_id)
 
                 local row = added[2].row_func("/books/Dune.epub", true, { authors = "Frank Herbert\nBrian Herbert" })
                 assert.are.same({ "More by this author" }, texts(row))
                 row[1].callback()
                 assert.are.equal("Frank Herbert", helper.lastShown().input)
-                assert.are.equal("Search in: Author", buttonWithId(helper.lastShown(), "scope").text)
             end)
 
             it("closes the dialog it's in", function()
@@ -1935,7 +1462,7 @@ describe("KindleFetch", function()
                 assert.is_nil(added[1].row_func("/books/Dune.epub", true, { authors = "" }))
             end)
 
-            -- rather than one for a book that has been closed since
+            -- Not from one for a book that has been closed since.
             it("searches from what's open by then", function()
                 openUI()
                 local latest = openUI()
@@ -1946,7 +1473,7 @@ describe("KindleFetch", function()
 
         it("searches for what's highlighted in a book", function()
             local added = {}
-            KindleFetch:new {
+            FetchAnna:new {
                 ui = {
                     menu = { registerToMainMenu = function() end },
                     highlight = {
@@ -1957,31 +1484,31 @@ describe("KindleFetch", function()
                 },
             }
             local closed = false
-            local search_button = added["12_kindlefetch_search"]({
+            local search_button = added["12_fetchanna_search"]({
                 selected_text = { text = "the spice\nmust flow" },
                 onClose = function()
                     closed = true
                 end,
             })
 
-            assert.are.equal("Search Kindle Fetch", search_button.text)
+            assert.are.equal("Search FetchAnna", search_button.text)
             search_button.callback()
             assert.is_true(closed)
             assert.are.equal("the spice must flow", helper.lastShown().input)
         end)
 
-        it("offers more by the author of the book being read, in Kindle Fetch's menu", function()
+        it("offers more by the author of the book being read, in FetchAnna's menu", function()
             local function menuTexts(plugin)
                 local menu_items = {}
                 plugin:addToMainMenu(menu_items)
                 local result = {}
-                for _, item in ipairs(menu_items.kindlefetch.sub_item_table) do
+                for _, item in ipairs(menu_items.fetchanna.sub_item_table) do
                     table.insert(result, item.text or item.text_func())
                 end
-                return result, menu_items.kindlefetch.sub_item_table
+                return result, menu_items.fetchanna.sub_item_table
             end
 
-            local reading = KindleFetch:new {
+            local reading = FetchAnna:new {
                 ui = {
                     menu = { registerToMainMenu = function() end },
                     document = {},
@@ -1989,17 +1516,17 @@ describe("KindleFetch", function()
                 },
             }
             local menu_texts, items = menuTexts(reading)
-            -- after Search
+            -- After Search.
             assert.are.equal("More by Frank Herbert", menu_texts[2])
             items[2].callback()
             assert.are.equal("Frank Herbert", helper.lastShown().input)
 
-            -- which there's nothing to search for without
+            -- Without an author there's nothing to search for.
             reading.ui.doc_props = {}
             menu_texts, items = menuTexts(reading)
             assert.are.equal("More by this author", menu_texts[2])
             assert.is_false(items[2].enabled_func())
-            -- or a book
+            -- Or a book.
             menu_texts = menuTexts(openUI())
             assert.are.equal("Downloads", menu_texts[2])
         end)
@@ -2008,7 +1535,7 @@ describe("KindleFetch", function()
     describe("changing what the books found can be in, from the results", function()
         local plugin
 
-        -- the results' menu's Search again, offering what can be changed, from the menu that's open
+        -- Taps Search again in the results' menu, which offers what can be changed, from the menu that's open.
         local function searchAgain(menu)
             menu:onLeftButtonTap()
             local results_menu = helper.lastShown()
@@ -2023,7 +1550,7 @@ describe("KindleFetch", function()
             search(plugin, "orwell")
         end)
 
-        it("offers the languages, file types and book types", function()
+        it("offers the languages and file types", function()
             local dialog = searchAgain(menus[1])
             assert.are.equal("Change the settings, and search again:", dialog.title)
             button(dialog, "Languages…").callback()
@@ -2031,9 +1558,13 @@ describe("KindleFetch", function()
             assert.are.equal("languages", choosers[1].name)
 
             button(searchAgain(menus[1]), "File types…").callback()
-            button(searchAgain(menus[1]), "Book types…").callback()
             assert.are.equal("file types", choosers[2].name)
-            assert.are.equal("book types", choosers[3].name)
+            -- No book types, which Anna's Archive doesn't sort its books into.
+            for _, row in ipairs(searchAgain(menus[1]).buttons) do
+                for _, b in ipairs(row) do
+                    assert.are_not.equal("Book types…", b.text)
+                end
+            end
         end)
 
         it("searches again once they've changed, in place of the results", function()
@@ -2053,15 +1584,6 @@ describe("KindleFetch", function()
             assert.is_false(helper.wasClosed(menus[1]))
             assert.are.equal(1, #searches)
         end)
-
-        -- which only Library Genesis sorts its books into
-        it("leaves book types out for the other sites", function()
-            search_results[1] = { { book("Emma") } }
-            search(plugin, "emma", "archive")
-            local dialog = searchAgain(menus[2])
-            assert.is_false(pcall(button, dialog, "Book types…"))
-            assert.is_true(pcall(button, dialog, "Languages…"))
-        end)
     end)
 
     describe("looking through the books found", function()
@@ -2079,7 +1601,7 @@ describe("KindleFetch", function()
             search(plugin, "dystopia")
         end)
 
-        -- KOReader's Go to letter, on tapping the page number, exited KOReader on a book without
+        -- KOReader's Go to letter, on tapping the page number, would exit KOReader on a book without text.
         it("lists each book with its title, authors and file type", function()
             local items = menus[1].item_table
             assert.are.equal("1984 · George Orwell · EPUB", items[1].text)
@@ -2091,14 +1613,14 @@ describe("KindleFetch", function()
         end)
 
         it("shows only the books with the text in their title, authors or file type, from the page number", function()
-            -- KOReader's Search, on tapping the page number
+            -- KOReader's Search, on tapping the page number.
             menus[1].search_callback("orwell")
-            -- with Load more, whose books are looked through as these are
+            -- With Load more, whose books are looked through as these are.
             assert.are.same({ "1984", "Animal Farm", "Load more" }, itemTexts(menus[1]))
             assert.are.equal("dystopia · 2 of 3 books", menus[1].title)
             assert.are.equal(1, menus[1].page)
             assert.are.same({ 1, 1 }, menus[1].covers_loaded)
-            -- without searching again
+            -- Without searching again.
             assert.are.same({ { "dystopia", 1 } }, searches)
 
             menus[1].search_callback(" PDF ")
@@ -2123,7 +1645,7 @@ describe("KindleFetch", function()
             assert.are.equal("appbar.menu", menus[1].title_bar_left_icon)
             menus[1]:onLeftButtonTap()
             local results_menu = helper.lastShown()
-            -- there's nothing to show again yet
+            -- There's nothing to show again yet.
             assert.is_false(pcall(button, results_menu, "Show all 3 books"))
 
             button(results_menu, "Look through the books found…").callback()
@@ -2136,7 +1658,7 @@ describe("KindleFetch", function()
             assert.are.same({ "Brave New World", "Load more" }, itemTexts(menus[1]))
 
             menus[1]:onLeftButtonTap()
-            -- with what's being looked for, to change it
+            -- With what's being looked for, to change it.
             button(helper.lastShown(), "Look through the books found…").callback()
             assert.are.equal("huxley", helper.lastShown().input)
             menus[1]:onLeftButtonTap()
@@ -2156,10 +1678,10 @@ describe("KindleFetch", function()
     describe("showing only some of the books found", function()
         local plugin
 
-        -- a book found on the site, in the language, and the file type where given
-        local function siteBook(title, source, language, file_type)
+        -- Returns a book found on Anna's Archive, in the language, and the file type where given.
+        local function siteBook(title, language, file_type)
             local found = book(title, file_type)
-            found.source = source
+            found.source = "annas"
             found.language = language
             return found
         end
@@ -2170,7 +1692,7 @@ describe("KindleFetch", function()
             andSearch(button(plugin.search_box, "Search").callback)
         end
 
-        -- the texts of the buttons in the menu at the top of the results that are showing, and the menu
+        -- Returns the button texts of the menu at the top of the results, and the menu.
         local function resultsMenu()
             menus[#menus]:onLeftButtonTap()
             local results_menu = helper.lastShown()
@@ -2183,7 +1705,7 @@ describe("KindleFetch", function()
             return texts, results_menu
         end
 
-        -- the button in the menu at the top of the results whose text starts with start
+        -- Returns the button in that menu whose text starts with start.
         local function filterButton(start)
             local _, results_menu = resultsMenu()
             for _, row in ipairs(results_menu.buttons) do
@@ -2204,8 +1726,8 @@ describe("KindleFetch", function()
             return texts
         end
 
-        -- show only the books with the codes of what the button's list has, as if they were all that was ticked once
-        -- it was closed, returning what saving it did: it's closed, with what's ticked changed, unless that's false
+        -- Shows only the books with these codes, as if they were all that was ticked when the button's list closed.
+        -- Returns what saving did: unless that's false, the list is closed with what's ticked changed.
         local function show(start, codes)
             filterButton(start).callback()
             local list = tick_lists[#tick_lists]
@@ -2222,67 +1744,62 @@ describe("KindleFetch", function()
         end
 
         before_each(function()
-            settings.search_sources = { "zlib", "libgen", "archive" }
-            zlib_logged_in = true
-            site_results.zlib = {
-                { { siteBook("Dune", "zlib", "english"), siteBook("Dune Messiah", "zlib", "French") }, nil, 2 },
+            search_results[1] = {
+                {
+                    siteBook("Dune", "english"),
+                    siteBook("Dune Messiah", "French"),
+                    siteBook("Children of Dune", "English", "pdf"),
+                    siteBook("Emma"),
+                },
+                nil,
+                2,
             }
-            search_results[1] = { { siteBook("Children of Dune", "libgen", "English", "pdf") }, nil, 2 }
-            site_results.archive = { { { siteBook("Emma", "archive") } } }
             plugin = openUI()
             searchDune()
         end)
 
-        it("offers to show only the books from some of the sites, languages and file types found", function()
+        it("offers to show only the books in some of the languages and file types found", function()
             assert.are.same({
                 "Look through the books found…",
-                "Sites: All",
                 "Languages: All",
                 "File types: All",
                 "Downloaded: All",
                 "Search again…",
             }, (resultsMenu()))
 
-            filterButton("Sites:").callback()
+            -- The most common first, each spelling of a language as the same, and books that don't say last.
+            filterButton("Languages:").callback()
             assert.is_true(helper.wasClosed(helper.state.shown[#helper.state.shown]))
             local list = tick_lists[1]
-            assert.are.equal("Sites", list.title)
-            -- each with how many of the books have it, in the order the sites are offered
-            assert.are.same({ "Z-Library (2)", "Library Genesis (1)", "Internet Archive (1)" }, choiceTexts(list))
-            assert.are.same({ "zlib", "libgen", "archive" }, list.ticked)
+            assert.are.equal("Languages", list.title)
+            assert.are.same({ "English (2)", "French (1)", "Unknown (1)" }, choiceTexts(list))
             assert.are.equal("That would hide every book found.", list.none_text)
-
-            -- the most common first, each site's spelling of a language as the same, and books that don't say last
-            filterButton("Languages:").callback()
-            assert.are.same({ "English (2)", "French (1)", "Unknown (1)" }, choiceTexts(tick_lists[2]))
             filterButton("File types:").callback()
-            assert.are.same({ "EPUB (3)", "PDF (1)" }, choiceTexts(tick_lists[3]))
+            assert.are.same({ "EPUB (3)", "PDF (1)" }, choiceTexts(tick_lists[2]))
         end)
 
         it("shows only the books with what's ticked, without searching again", function()
             local covers_loaded = #menus[1].covers_loaded
-            show("Sites:", { "zlib", "archive" })
-            assert.are.same({ "Dune", "Dune Messiah", "Emma", "Load more" }, itemTexts(menus[1]))
+            show("Languages:", { "english", "" })
+            assert.are.same({ "Dune", "Children of Dune", "Emma", "Load more" }, itemTexts(menus[1]))
             assert.are.equal("dune · 3 of 4 books", menus[1].title)
-            -- from the first page, with its covers
+            -- From the first page, with its covers.
             assert.are.equal(1, menus[1].page)
             assert.are.equal(covers_loaded + 1, #menus[1].covers_loaded)
             assert.are.equal(1, menus[1].covers_loaded[covers_loaded + 1])
             assert.are.same({ { "dune", 1 } }, searches)
-            -- which the menu says, offering to show them all again
-            assert.are.equal("Sites: Z-Library, Internet Archive", filterButton("Sites:").text)
 
-            show("Languages:", { "english", "" })
-            assert.are.same({ "Dune", "Emma", "Load more" }, itemTexts(menus[1]))
+            show("File types:", { "pdf" })
+            assert.are.same({ "Children of Dune", "Load more" }, itemTexts(menus[1]))
             filterButton("Show all 4 books").callback()
             assert.are.same({ "Dune", "Dune Messiah", "Children of Dune", "Emma", "Load more" }, itemTexts(menus[1]))
             assert.are.equal("dune · 4+ books", menus[1].title)
-            assert.are.equal("Sites: All", filterButton("Sites:").text)
+            assert.are.equal("Languages: All", filterButton("Languages:").text)
         end)
 
         it("leaves the list on the page it's on where nothing has changed", function()
             menus[1].page = 2
-            filterButton("Sites:").callback()
+            filterButton("Languages:").callback()
             local list = tick_lists[1]
             list.save(list.ticked)
             list.on_closed(false)
@@ -2292,40 +1809,39 @@ describe("KindleFetch", function()
 
         it("doesn't hide every book, leaving the list open to tick something else", function()
             show("Languages:", { "french" })
-            assert.is_false(show("Sites:", { "libgen", "archive" }))
+            assert.is_false(show("File types:", { "pdf" }))
             assert.are.equal("That would hide every book found.", helper.lastNotification())
             assert.are.same({ "Dune Messiah", "Load more" }, itemTexts(menus[1]))
-            assert.are.equal("Sites: All", filterButton("Sites:").text)
+            assert.are.equal("File types: All", filterButton("File types:").text)
         end)
 
         it("looks through the books shown for text", function()
-            show("Sites:", { "libgen" })
-            menus[1].search_callback("messiah")
-            assert.are.equal("None of the books shown have “messiah” in them.", helper.lastShown().text)
+            show("File types:", { "epub" })
             menus[1].search_callback("children")
-            assert.are.same({ "Children of Dune", "Load more" }, itemTexts(menus[1]))
-            -- and shows all of them again, whatever was hidden
+            assert.are.equal("None of the books shown have “children” in them.", helper.lastShown().text)
+            menus[1].search_callback("messiah")
+            assert.are.same({ "Dune Messiah", "Load more" }, itemTexts(menus[1]))
+            -- Shows all of them again, whatever was hidden.
             filterButton("Show all 4 books").callback()
             assert.are.equal(5, #menus[1].item_table)
         end)
 
-        -- as there's nothing to choose between
+        -- There's nothing to choose between.
         it("doesn't offer what all the books found have the same of", function()
-            search_results[1] =
-                { { siteBook("Dune", "libgen", "English"), siteBook("Dune Messiah", "libgen", "English") } }
+            search_results[1] = { { siteBook("Dune", "English"), siteBook("Dune Messiah", "English") } }
             search(plugin, "dune")
             assert.are.same({
                 "Look through the books found…",
-                -- which takes looking in the download folder to know
+                -- Knowing this takes looking in the download folder.
                 "Downloaded: All",
                 "Search again…",
             }, (resultsMenu()))
         end)
 
         it("offers the decades the books found are from, and how big they are, where they differ", function()
-            local dune = siteBook("Dune", "libgen", "English")
+            local dune = siteBook("Dune", "English")
             dune.year, dune.file_size = "1965", "2 MB"
-            local messiah = siteBook("Dune Messiah", "libgen", "English")
+            local messiah = siteBook("Dune Messiah", "English")
             messiah.year, messiah.file_size = "2008", "250 MB"
             search_results[1] = { { dune, messiah } }
             search(plugin, "dune")
@@ -2354,54 +1870,27 @@ describe("KindleFetch", function()
             assert.are.equal("Downloaded: No", filterButton("Downloaded:").text)
         end)
 
-        -- as nothing was said about what they have, which wasn't there to untick
-        it("shows the books of the sites that finish later, but for what's hidden", function()
-            site_results.archive = {
-                function()
-                    -- once Z-Library's and Library Genesis' books are showing
-                    show("Languages:", { "english" })
-                    return { siteBook("Emma", "archive", "German"), siteBook("Madame Bovary", "archive", "French") }
-                end,
-            }
-            searchDune()
-            assert.are.same({ "Dune", "Children of Dune", "Emma", "Load more" }, itemTexts(menus[2]))
-            assert.are.equal("dune · 3 of 5 books", menus[2].title)
-        end)
-
-        it("loads more only from the sites shown", function()
-            show("Sites:", { "libgen", "archive" })
-            site_results.zlib[2] = { { siteBook("God Emperor of Dune", "zlib", "English") } }
-            search_results[2] = { { siteBook("Heretics of Dune", "libgen", "English") } }
-            loadMore()
-            assert.are.same({ { "dune", 1 } }, zlib_searches)
-            assert.are.same({ { "dune", 1 }, { "dune", 2 } }, searches)
-            -- and has no more to load, though the sites hidden do
-            assert.are.same({ "Children of Dune", "Emma", "Heretics of Dune" }, itemTexts(menus[1]))
-        end)
-
         it("turns to the first of the books loaded that's shown", function()
-            show("Sites:", { "zlib", "libgen" })
-            site_results.zlib[2] = { { siteBook("God Emperor of Dune", "zlib", "English") } }
-            search_results[2] = { { siteBook("Heretics of Dune", "libgen", "English") } }
+            show("File types:", { "epub" })
+            search_results[2] = { { siteBook("God Emperor of Dune", "English") } }
             loadMore()
-            -- the fourth shown, on the second page, rather than the fifth found
+            -- The fourth shown, on the second page, not the fifth found.
             assert.are.equal(2, menus[1].page)
         end)
 
         it("says when the books loaded are all hidden", function()
             show("Languages:", { "french" })
-            site_results.zlib[2] = { { siteBook("God Emperor of Dune", "zlib", "English") } }
-            search_results[2] = { {} }
+            search_results[2] = { { siteBook("God Emperor of Dune", "English") } }
             loadMore()
             assert.are.equal("1 more book was found, but it isn't among those shown.", helper.lastShown().text)
             assert.are.same({ "Dune Messiah" }, itemTexts(menus[1]))
         end)
 
         it("starts afresh for the next search", function()
-            show("Sites:", { "zlib" })
+            show("Languages:", { "french" })
             searchDune()
             assert.are.same({ "Dune", "Dune Messiah", "Children of Dune", "Emma", "Load more" }, itemTexts(menus[2]))
-            assert.are.equal("Sites: All", filterButton("Sites:").text)
+            assert.are.equal("Languages: All", filterButton("Languages:").text)
         end)
     end)
 
@@ -2419,17 +1908,6 @@ describe("KindleFetch", function()
             search(plugin, "dune")
         end)
 
-        it("offers to try again when loading more fails as the device isn't connected", function()
-            search_results[2] = { nil, "no internet connection" }
-            loadMore()
-            local again = helper.lastShown().other_buttons[1][1]
-            assert.are.equal("Loading more books failed: no internet connection", helper.lastShown().text)
-
-            search_results[2] = { { book("Children of Dune") }, nil, 4 }
-            andSearch(again.callback)
-            assert.are.same({ "Dune", "Dune Messiah", "Children of Dune", "Load more" }, itemTexts(menus[1]))
-        end)
-
         it("says it's loading more until they're found, with a button to call it off", function()
             search_results[2] = { { book("Children of Dune") }, nil, 4 }
             local shown = #helper.state.shown
@@ -2439,7 +1917,7 @@ describe("KindleFetch", function()
             assert.are.equal("Loading more books...", message.title)
             assert.are.equal("Cancel", message.buttons[1][1].text)
             assert.is_true(helper.wasClosed(message))
-            -- which calls it off through the stand-in it waits with (see MultiSearch)
+            -- Cancel calls it off through the stand-in it waits with (see MultiSearch).
             assert.are.equal(message.dismiss_callback ~= nil, true)
             assert.are_not.equal(message, trap_widgets[2])
         end)
@@ -2452,7 +1930,7 @@ describe("KindleFetch", function()
             assert.is_false(helper.wasClosed(menus[1]))
             assert.are.equal(0, #helper.state.notifications)
 
-            -- and can be asked for again
+            -- It can be asked for again.
             search_results[2] = { { book("Children of Dune") } }
             loadMore()
             assert.are.same({ "Dune", "Dune Messiah", "Children of Dune" }, itemTexts(menus[1]))
@@ -2467,17 +1945,17 @@ describe("KindleFetch", function()
             assert.are.equal("dune · 3+ books", menus[1].title)
         end)
 
-        -- it used to show them in a new list, back at its first page
+        -- Not in a new list, back at its first page.
         it("adds them to the list that's open, turning to the first of them and loading their covers", function()
             search_results[2] = { { book("Children of Dune"), book("God Emperor of Dune") }, nil, 4 }
             loadMore()
 
             assert.are.equal(1, #menus)
             assert.is_false(helper.wasClosed(menus[1]))
-            -- the third book is the first on the second page
+            -- The third book is the first on the second page.
             assert.are.equal(2, menus[1].page)
             assert.are.same({ 1, 2 }, menus[1].covers_loaded)
-            -- and the new books can be chosen, like the first ones
+            -- The new books can be chosen, like the first ones.
             menus[1].item_table[3].callback()
             assert.are.equal("Children of Dune", downloads[1].book.title)
         end)
@@ -2487,7 +1965,7 @@ describe("KindleFetch", function()
             search_results[2] = { { book("Children of Dune") } }
             loadMore()
 
-            -- only the first page's, from before they were turned off
+            -- Only the first page's, from before they were turned off.
             assert.are.same({ 1 }, menus[1].covers_loaded)
         end)
 
@@ -2498,7 +1976,7 @@ describe("KindleFetch", function()
             loadMore()
 
             assert.are.same({ "dune", 4 }, searches[3])
-            -- the end of the results
+            -- The end of the results.
             assert.are.same({ "Dune", "Dune Messiah", "Children of Dune", "God Emperor of Dune" }, itemTexts(menus[1]))
         end)
 
@@ -2524,7 +2002,7 @@ describe("KindleFetch", function()
             assert.are.same({ "dune", 2 }, searches[2])
         end)
 
-        -- which was said to be the end of the results, and Load more taken away
+        -- It mustn't be taken for the end of the results, with Load more taken away.
         it("says loading more failed when the search doesn't say why", function()
             search_results[2] = { nil }
             loadMore()
@@ -2550,7 +2028,7 @@ describe("KindleFetch", function()
             assert.are.equal(1, #menus)
             assert.are.same({ "Dune", "Dune Messiah" }, itemTexts(menus[1]))
             assert.are.equal("dune · 2 books", menus[1].title)
-            -- staying on the page that was showing
+            -- Staying on the page that was showing.
             assert.are.equal(1, menus[1].page)
         end)
 
@@ -2630,7 +2108,7 @@ describe("KindleFetch", function()
             helper.tick()
 
             local dialog = helper.lastShown()
-            -- centred, with the title in bold on a line of its own
+            -- Centred, with the title in bold on a line of its own.
             assert.are.equal("\u{FFF1}Downloaded\n\u{FFF2}Dune\u{FFF3}\n\nWould you like to read it now?", dialog.title)
             assert.are.equal("center", dialog.title_align)
             local read_now = dialog.buttons[1][2]
@@ -2639,12 +2117,12 @@ describe("KindleFetch", function()
             read_now.callback()
             assert.is_true(helper.wasClosed(dialog))
             assert.are.same({ "openFile", "/mnt/us/books/Dune.epub" }, opened)
-            -- closing the search box too, which would otherwise show again once the book is closed
+            -- The search box is closed too, or it would show again once the book is closed.
             assert.is_true(helper.wasClosed(menus[1]))
             assert.is_true(helper.wasClosed(plugin.search_box))
         end)
 
-        -- chosen when asked whether to download over it
+        -- Chosen when asked whether to download over it.
         it("opens a book that's already there, in place of downloading it again", function()
             selectBook("Dune")
             downloads[1].open_existing("/mnt/us/documents/Dune.epub")
@@ -2660,14 +2138,14 @@ describe("KindleFetch", function()
             helper.tick()
 
             local dialog = helper.lastShown()
-            -- rather than Cancel, as the book has downloaded
+            -- Not Cancel, as the book has downloaded.
             assert.are.equal("Not now", dialog.buttons[1][1].text)
             dialog.buttons[1][1].callback()
             assert.is_true(helper.wasClosed(dialog))
             assert.is_nil(opened)
         end)
 
-        -- which didn't show it until it was left and gone back to
+        -- Otherwise it doesn't show until the folder is left and gone back to.
         it("lists the downloaded book in the file browser", function()
             selectBook("Dune")
             downloads[1].callback(true, nil, "/mnt/us/books/Dune.epub")
@@ -2692,7 +2170,7 @@ describe("KindleFetch", function()
                 texts
             )
 
-            -- each closing the dialog first
+            -- Each closes the dialog first.
             button(dialog, "Collections…").callback()
             assert.is_true(helper.wasClosed(dialog))
             assert.are.same({ "/mnt/us/books/Dune.epub" }, collections_chosen)
@@ -2703,7 +2181,7 @@ describe("KindleFetch", function()
             assert.is_true(button(dialog, "Book information").enabled)
             button(dialog, "Book information").callback()
             assert.is_true(helper.wasClosed(dialog))
-            -- what's known of the book is found out from the file, as the site's details may not be the book's own
+            -- Read from the file, as the site's details may not be the book's own.
             assert.are.same({ { "/mnt/us/books/Dune.epub" } }, info_shown)
         end)
 
@@ -2716,7 +2194,7 @@ describe("KindleFetch", function()
             button(dialog, "Show folder").callback()
             assert.are.same({ "/mnt/us/books/Dune.epub" }, folders_shown)
             assert.is_true(helper.wasClosed(dialog))
-            -- which would otherwise hide it
+            -- They would otherwise hide it.
             assert.is_true(helper.wasClosed(menus[1]))
             assert.is_true(helper.wasClosed(plugin.search_box))
         end)
@@ -2735,7 +2213,7 @@ describe("KindleFetch", function()
         end)
 
         it("shows the downloaded book's information as KOReader before v2024.04 does", function()
-            -- which was given what closes the dialog where it's given what's known of the book now
+            -- Its second argument was what closes the dialog. Now it's what's known of the book.
             helper.stub("apps/filemanager/filemanagerutil", {
                 genBookInformationButton = function(file, caller_callback, button_disabled)
                     return {
@@ -2766,7 +2244,7 @@ describe("KindleFetch", function()
             downloads[1].callback(true, nil, "/mnt/us/books/Dune.epub")
             helper.tick()
 
-            -- rather than an empty row
+            -- Not an empty row.
             assert.are.equal(1, #helper.lastShown().buttons)
         end)
 
@@ -2780,8 +2258,8 @@ describe("KindleFetch", function()
             assert.are.same({ "switchDocument", "/mnt/us/books/Dune.epub" }, opened)
         end)
 
-        -- the download may have been hidden, and finish after what it was started from has closed. opening the
-        -- book from there crashed KOReader when that was a book, as only the file manager can open files
+        -- A hidden download may finish after what started it has closed. Opening the book from there would crash
+        -- KOReader if that was a book: only the file manager can open files.
         it("opens the book from what's open by then, rather than what the download was started from", function()
             selectBook("Dune")
             readBook()
@@ -2790,7 +2268,7 @@ describe("KindleFetch", function()
             helper.lastShown().buttons[1][2].callback()
             assert.are.same({ "switchDocument", "/mnt/us/books/Dune.epub" }, opened)
 
-            -- and the other way round: started while reading a book that has been closed since
+            -- The other way round: started from a book closed since.
             ReaderUI.instance = nil
             FileManager.instance = fileManager()
             downloads[1].callback(true, nil, "/mnt/us/books/Dune.epub")
@@ -2819,61 +2297,16 @@ describe("KindleFetch", function()
             assert.are.equal(0, refreshes)
         end)
 
-        -- rather than its link being looked up, only for Z-Library to say so
-        it("logs in to Z-Library first, to download a book found there once logged out", function()
-            local zlib_book = book("1984")
-            zlib_book.source = "zlib"
-            zlib_logged_in = false
-            plugin:downloadBook(zlib_book)
-            assert.are.equal(0, #downloads)
-            assert.are.equal(1, #zlib_logins)
-
-            zlib_logged_in = true
-            zlib_logins[1]()
-            assert.are.equal(zlib_book, downloads[1].book)
-        end)
-
         describe("offering what fixes it when it fails", function()
-            it("logs in again, then downloads the book again, once Z-Library has logged Kindle Fetch out", function()
-                selectBook("Dune")
-                downloads[1].callback(false, "Z-Library has logged Kindle Fetch out, so log in again")
-
-                local failure = helper.lastShown()
-                assert.are.equal(
-                    "Download failed: Z-Library has logged Kindle Fetch out, so log in again",
-                    failure.text
-                )
-                assert.are.equal("notice-warning", failure.icon)
-                assert.are.equal("Log in", failure.other_buttons[1][1].text)
-                failure.other_buttons[1][1].callback()
-                zlib_logins[1]()
-                assert.are.equal(2, #downloads)
-                assert.are.equal("Dune", downloads[2].book.title)
-            end)
-
             it("offers to update a Kindle's curl, where it's too old", function()
                 selectBook("Dune")
-                downloads[1].callback(false, require("util.errors").OUTDATED_CURL)
+                downloads[1].callback(false, require("fetchanna.util.errors").OUTDATED_CURL)
 
                 local update = helper.lastShown().other_buttons[1][1]
                 assert.are.equal("Update curl", update.text)
                 update.callback()
                 assert.are.equal(1, checks.curl)
                 assert.is_true(curl_check_user_requested)
-            end)
-
-            it("turns Wi-Fi on, then downloads the book again, where the device isn't connected", function()
-                selectBook("Dune")
-                helper.stubs.network.wifi_on = false
-                helper.stubs.network.connected = false
-                downloads[1].callback(false, "no internet connection")
-
-                local wifi = helper.lastShown().other_buttons[1][1]
-                assert.are.equal("Turn on Wi-Fi", wifi.text)
-                wifi.callback()
-                assert.are.equal(1, #downloads)
-                helper.stubs.network.when_connected()
-                assert.are.equal(2, #downloads)
             end)
         end)
 

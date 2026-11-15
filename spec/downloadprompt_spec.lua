@@ -14,8 +14,7 @@ describe("DownloadPrompt", function()
         fixtures.cacheCover(helper, book.id)
     end
 
-    -- the group with the book's title, authors and details, beside the cover if there is one
-    -- the book's details, as label and value pairs
+    -- Returns the book's details, from the group beside the cover, as label and value pairs.
     local function details(prompt)
         local rows = {}
         for _, row in ipairs(prompt.details_group) do
@@ -26,7 +25,7 @@ describe("DownloadPrompt", function()
         return rows
     end
 
-    -- tap one of the buttons along the bottom
+    -- Taps one of the buttons along the bottom.
     local function tapButton(prompt, id)
         for _, button in ipairs(prompt.button_table.buttons[1]) do
             if button.id == id then
@@ -51,7 +50,7 @@ describe("DownloadPrompt", function()
             file_size = "1.2MB",
         }
         downloads = {}
-        DownloadPrompt = require("ui.downloadprompt")
+        DownloadPrompt = require("fetchanna.ui.downloadprompt")
     end)
 
     after_each(helper.cleanup)
@@ -61,7 +60,7 @@ describe("DownloadPrompt", function()
 
         assert.are.equal("Dune", prompt.title.text)
         assert.are.equal("Frank Herbert", prompt.author.text)
-        -- the folder, which can be tapped to choose another, and the name the book is saved as
+        -- The folder, which can be tapped to change it, and the file name.
         assert.are.equal("/mnt/us/documents", prompt.path_widget.text)
         assert.are.equal("Dune.epub", prompt.filename_widget.text)
         assert.are.same({
@@ -72,7 +71,7 @@ describe("DownloadPrompt", function()
         }, details(prompt))
     end)
 
-    -- in greys dark enough to read on e-ink (#3)
+    -- In greys dark enough to read on e-ink (KindleFetch #3).
     it("shows the title and details in black, and the author and labels in grey", function()
         local prompt = newPrompt()
         assert.are.equal("gray 4", prompt.author.fgcolor)
@@ -81,7 +80,7 @@ describe("DownloadPrompt", function()
         assert.is_true(prompt.title.bold)
     end)
 
-    -- so the prompt fits on the screen whatever the book is called
+    -- So the prompt fits on the screen whatever the book is called.
     it("shows at most 4 lines of a long title, and 2 of a long list of authors", function()
         local prompt = newPrompt()
         assert.is_nil(prompt.title.height)
@@ -107,6 +106,24 @@ describe("DownloadPrompt", function()
         )
     end)
 
+    -- Each download from there uses one of the day's fast downloads.
+    it("says how many fast downloads the account has left, where the site counts them", function()
+        book.source = "annas"
+        local Sources = require("fetchanna.api.sources")
+        Sources.annas.allowance = function()
+            return "20 of 25 a day left"
+        end
+        assert.are.same({ "Fast downloads", "20 of 25 a day left" }, details(newPrompt())[5])
+
+        -- Not shown while it isn't known.
+        Sources.annas.allowance = function()
+            return nil
+        end
+        assert.are.equal(4, #details(newPrompt()))
+        book.source = "libgen"
+        assert.are.equal(4, #details(newPrompt()))
+    end)
+
     it("shows and closes", function()
         local prompt = newPrompt()
         prompt:show()
@@ -116,7 +133,7 @@ describe("DownloadPrompt", function()
         assert.is_true(helper.wasClosed(prompt.outer_container))
     end)
 
-    -- as KOReader's own dialogs do, rather than flashing the whole screen each time
+    -- As KOReader's own dialogs do, not flashing the whole screen.
     it("only refreshes the part of the screen it takes up when shown and closed", function()
         local prompt = newPrompt()
         prompt.frame.dimen = { x = 50, y = 200, w = 500, h = 400 }
@@ -161,8 +178,7 @@ describe("DownloadPrompt", function()
         assert.are.same({ books .. "/Dune.epub" }, downloads)
     end)
 
-    -- a FAT card's file system can't have names with some of what others can, which the name kept for the folder before
-    -- could have
+    -- FAT forbids some characters that the name kept for the folder before could have.
     it("names the book safely for the folder chosen", function()
         local folders = {}
         require("util").getSafeFilename = function(name, folder)
@@ -179,7 +195,7 @@ describe("DownloadPrompt", function()
         assert.are.equal(fat .. "/Dune_ Messiah.epub", prompt.filepath)
     end)
 
-    -- which was only found out once the download had started, after its link had been looked up
+    -- Otherwise it's only found out after the link lookup, once the download starts.
     it("keeps the folder it was when the one chosen can't be written to", function()
         local prompt = newPrompt()
         prompt.path_widget.callback()
@@ -189,7 +205,7 @@ describe("DownloadPrompt", function()
         assert.matches("^Books can't be downloaded to /proc: it can't be written to", helper.lastError())
     end)
 
-    -- which used to share a button with the folder, and be cut off by a long one
+    -- Sharing a button with the folder, the name would be cut off by a long one.
     it("shows the name the book is saved as on its own, however long the folder", function()
         local folder = "/mnt/us/documents/" .. string.rep("a folder with a long name/", 6)
         local prompt = DownloadPrompt.new(book, folder .. "Dune Messiah.epub", function() end)
@@ -250,12 +266,12 @@ describe("DownloadPrompt", function()
             prompt:show()
 
             cacheCover()
-            prompt.outer_container:onKindleFetchCoversDownloaded()
+            prompt.outer_container:onFetchAnnaCoversDownloaded()
             assert.are.equal(prompt.cover_container, prompt.cover)
             assert.are.equal(prompt.cover, prompt.header[1])
         end)
 
-        -- which arrive several times a second while the search results behind it load theirs
+        -- They arrive several times a second while the results behind it load theirs.
         it("isn't redrawn when other books' covers arrive", function()
             book.image_url = "https://covers.example/dune.jpg"
             local prompt = newPrompt()
@@ -263,11 +279,11 @@ describe("DownloadPrompt", function()
             helper.state.refreshes = {}
 
             fixtures.cacheCover(helper, "another-book")
-            prompt.outer_container:onKindleFetchCoversDownloaded()
+            prompt.outer_container:onFetchAnnaCoversDownloaded()
             assert.are.equal(0, #helper.state.refreshes)
 
             cacheCover()
-            prompt.outer_container:onKindleFetchCoversDownloaded()
+            prompt.outer_container:onFetchAnnaCoversDownloaded()
             assert.are.equal(1, #helper.state.refreshes)
             assert.are.equal(prompt.cover_container, prompt.cover)
         end)
@@ -275,15 +291,15 @@ describe("DownloadPrompt", function()
         it("is taken away when it couldn't be downloaded", function()
             book.image_url = "https://covers.example/dune.jpg"
             local prompt = newPrompt()
-            require("util.curlutil").canFetch = function()
+            require("fetchanna.util.curlutil").canFetch = function()
                 return true
             end
-            require("util.curlutil").downloadMultiple = function()
+            require("fetchanna.util.curlutil").downloadMultiple = function()
                 return nil, nil, nil, "unable to launch curl"
             end
-            require("cache.covercache"):downloadMultiple({ book }, 1)
+            require("fetchanna.cache.covercache"):downloadMultiple({ book }, 1)
 
-            prompt.outer_container:onKindleFetchCoversDownloaded()
+            prompt.outer_container:onFetchAnnaCoversDownloaded()
             assert.is_nil(prompt.cover)
             assert.are.equal(380, prompt.title.width)
         end)
@@ -319,7 +335,7 @@ describe("DownloadPrompt", function()
         describe("full-size", function()
             local CoverCache, runs
 
-            -- the notices saying the full-size cover is loading that have been shown
+            -- Returns the notices shown saying the full-size cover is loading.
             local function loadingNotices()
                 local notices = {}
                 for _, widget in ipairs(helper.state.shown) do
@@ -331,9 +347,9 @@ describe("DownloadPrompt", function()
             end
 
             before_each(function()
-                CoverCache = require("cache.covercache")
+                CoverCache = require("fetchanna.cache.covercache")
                 runs = {}
-                local CurlUtil = require("util.curlutil")
+                local CurlUtil = require("fetchanna.util.curlutil")
                 CurlUtil.canFetch = function()
                     return true
                 end
@@ -360,7 +376,7 @@ describe("DownloadPrompt", function()
                 prompt.cover_container:onTapCover()
                 assert.are.same({ "https://libgen.example/fictioncovers/1000/dune.jpg" }, runs[1].urls)
                 assert.are.equal(CoverCache:get(book.id), prompt.fullscreen_file)
-                -- saying so until it arrives, as the thumbnail shows until then
+                -- It says so until it arrives, as the thumbnail shows meanwhile.
                 local notice = loadingNotices()[1]
                 assert.is_false(notice.timeout)
                 assert.is_false(helper.wasClosed(notice))
@@ -372,17 +388,17 @@ describe("DownloadPrompt", function()
                 local thumbnail = prompt.fullscreen_container
 
                 fixtures.cacheCover(helper, book.id .. "_full")
-                prompt.outer_container:onKindleFetchCoversDownloaded()
+                prompt.outer_container:onFetchAnnaCoversDownloaded()
                 assert.is_true(helper.wasClosed(thumbnail))
                 assert.is_true(prompt.fullscreen_cover_shown)
                 assert.are.equal(prompt.fullscreen_container, helper.lastShown())
                 assert.are.equal(CoverCache:getFullSize(book), prompt.fullscreen_file)
                 assert.are.equal(CoverCache:getFullSize(book), prompt.cover_container[1][1].file)
                 assert.are.equal(1, #runs)
-                -- no longer saying it's loading
+                -- It no longer says it's loading.
                 assert.is_true(helper.wasClosed(loadingNotices()[1]))
 
-                -- and says nothing once it's there
+                -- It says nothing once the cover is there.
                 prompt:closeFullscreenCover()
                 prompt.cover_container:onTapCover()
                 assert.are.equal(1, #loadingNotices())
@@ -393,7 +409,7 @@ describe("DownloadPrompt", function()
                 prompt.cover_container:onTapCover()
                 local thumbnail = prompt.fullscreen_container
 
-                prompt.outer_container:onKindleFetchCoversDownloaded()
+                prompt.outer_container:onFetchAnnaCoversDownloaded()
                 assert.is_false(helper.wasClosed(thumbnail))
                 assert.are.equal(CoverCache:get(book.id), prompt.fullscreen_file)
                 assert.is_false(helper.wasClosed(loadingNotices()[1]))
@@ -405,15 +421,15 @@ describe("DownloadPrompt", function()
 
                 helper.writeFile(runs[1].exit_file, "22")
                 helper.tick()
-                prompt.outer_container:onKindleFetchCoversDownloaded()
+                prompt.outer_container:onFetchAnnaCoversDownloaded()
                 assert.is_true(prompt.fullscreen_cover_shown)
                 assert.are.equal(CoverCache:get(book.id), prompt.fullscreen_file)
                 assert.is_true(helper.wasClosed(loadingNotices()[1]))
             end)
 
-            -- which said it was loading for good, as nothing would say it had stopped
+            -- Nothing would say it had stopped, so the notice would stay for good.
             it("doesn't say it's loading when it couldn't even be started", function()
-                require("util.curlutil").downloadMultiple = function()
+                require("fetchanna.util.curlutil").downloadMultiple = function()
                     return nil, nil, nil, "could not start curl"
                 end
                 local prompt = newPrompt()

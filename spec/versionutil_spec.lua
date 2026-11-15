@@ -5,7 +5,7 @@ describe("VersionUtil", function()
 
     before_each(function()
         helper.reset()
-        VersionUtil = require("util.versionutil")
+        VersionUtil = require("fetchanna.util.versionutil")
     end)
 
     describe("parseVersion", function()

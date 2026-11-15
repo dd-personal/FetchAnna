@@ -2,9 +2,9 @@ local H = require("helpers")
 local UIManager = require("ui/uimanager")
 local Event = require("ui/event")
 
-describe("KindleFetch", function()
+describe("FetchAnna", function()
     after_each(function()
-        -- close anything left open, back to the file manager
+        -- Closes anything left open, back to the file manager.
         local FileManager = require("apps/filemanager/filemanager")
         for _, window in ipairs(H.windows()) do
             if window ~= FileManager.instance then
@@ -15,23 +15,23 @@ describe("KindleFetch", function()
     end)
 
     it("is loaded from KOReader's data folder", function()
-        assert(H.plugin(), "KindleFetch isn't loaded")
-        local expected = os.getenv("KO_HOME") .. "/plugins/kindlefetch.koplugin"
-        local plugin_path = require("util.pathutil").getPluginPath():gsub("//+", "/")
+        assert(H.plugin(), "FetchAnna isn't loaded")
+        local expected = os.getenv("KO_HOME") .. "/plugins/fetchanna.koplugin"
+        local plugin_path = require("fetchanna.util.pathutil").getPluginPath():gsub("//+", "/")
         H.eq(expected, plugin_path, "plugin path")
-        -- and only from there, rather than also from another copy installed in KOReader
+        -- And only from there, not also from another copy installed in KOReader.
         H.eq(expected, (H.plugin().path:gsub("//+", "/")), "path of the plugin being run")
         local copies = 0
         for _, plugin in ipairs(require("pluginloader").enabled_plugins) do
-            if plugin.name == "kindlefetch" then
+            if plugin.name == "fetchanna" then
                 copies = copies + 1
             end
         end
-        H.eq(1, copies, "copies of KindleFetch loaded")
+        H.eq(1, copies, "copies of FetchAnna loaded")
     end)
 
     it("opens search from the Search menu", function()
-        H.openMainMenu({ "Kindle Fetch", "Search" })
+        H.openMainMenu({ "FetchAnna", "Search" })
         local plugin = H.plugin()
         H.waitFor("the search dialog", 10, function()
             return plugin.search_box and H.isShown(plugin.search_box)
@@ -44,7 +44,7 @@ describe("KindleFetch", function()
     end)
 
     it("opens search from a gesture", function()
-        UIManager:sendEvent(Event:new("KindleFetch"))
+        UIManager:sendEvent(Event:new("FetchAnna"))
         local dialog = H.waitFor("the search dialog", 10, function()
             return H.find(function(widget)
                 return widget.title == "Search for books" and widget.getInputText
@@ -56,8 +56,8 @@ describe("KindleFetch", function()
     end)
 
     it("changes settings", function()
-        local Settings = require("settings.settings")
-        H.openMainMenu({ "Kindle Fetch", "Settings" })
+        local Settings = require("fetchanna.settings.settings")
+        H.openMainMenu({ "FetchAnna", "Settings" })
         H.waitFor("the settings", 10, function()
             return H.find(function(widget)
                 return widget.text == "Show Book Covers: ☑"
@@ -83,16 +83,16 @@ describe("KindleFetch", function()
         end)
     end)
 
-    -- there are pages of languages, and ticking one mustn't go back to the first page
+    -- There are pages of languages, and ticking one mustn't go back to the first page.
     it("ticks a language on a later page, staying on that page", function()
-        local Settings = require("settings.settings")
+        local Settings = require("fetchanna.settings.settings")
         local languages = Settings:getPreferredLanguages()
 
         local ok, err = pcall(function()
-            H.openMainMenu({ "Kindle Fetch", "Settings" })
+            H.openMainMenu({ "FetchAnna", "Settings" })
             local settings = H.waitFor("the settings", 10, function()
                 return H.find(function(widget)
-                    return widget.title == "Kindle Fetch Settings" and widget.item_table
+                    return widget.title == "FetchAnna Settings" and widget.item_table
                 end)
             end)
             H.tap(H.find(function(widget)
@@ -124,7 +124,7 @@ describe("KindleFetch", function()
             assert(H.isShown(menu), "the languages were closed")
             H.shot("settings-languages")
 
-            -- saved once the languages are closed, back in the settings
+            -- Saved once the languages are closed, back in the settings.
             menu:onClose()
             H.waitFor("the settings to show the language", 10, function()
                 return not H.isShown(menu) and #Settings:getPreferredLanguages() == #languages + 1
@@ -140,11 +140,11 @@ describe("KindleFetch", function()
     it("checks for updates when asked", function()
         local since = #H.notifications
         H.asDevice(function()
-            H.openMainMenu({ "Kindle Fetch", "Check for updates" })
+            H.openMainMenu({ "FetchAnna", "Check for updates" })
             H.waitForNotification("Checking for updates", 10, since)
         end)
 
-        -- either up to date, or offering the latest release (which isn't installed here)
+        -- Either up to date, or offering the latest release (which isn't installed here).
         local result = H.waitFor("the update check", 60, function()
             for i = since + 1, #H.notifications do
                 if H.notifications[i]:find("up to date", 1, true) then
@@ -157,7 +157,7 @@ describe("KindleFetch", function()
         end)
         H.shot("update-check")
 
-        -- never update curl or the plugin from the tests
+        -- Never update curl or the plugin from the tests.
         assert(not H.find(function(widget)
             return widget.title == "Update curl?"
         end), "offered to update curl, which is recent enough in KOReader")

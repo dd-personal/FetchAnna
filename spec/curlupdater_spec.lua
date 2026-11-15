@@ -18,15 +18,15 @@ describe("CurlUpdater", function()
         helper.reset()
         data_dir = helper.tmpdir("data")
         helper.state.data_dir = data_dir
-        CurlUtil = require("util.curlutil")
-        HttpUtil = require("util.httputil")
-        CurlUpdater = require("updater.curlupdater")
+        CurlUtil = require("fetchanna.util.curlutil")
+        HttpUtil = require("fetchanna.util.httputil")
+        CurlUpdater = require("fetchanna.updater.curlupdater")
     end)
 
     after_each(helper.cleanup)
 
     describe("checkVersion", function()
-        -- installing curl uses mntroot, which only Kindles have (#1)
+        -- Installing curl uses mntroot, which only Kindles have (KindleFetch #1).
         it("skips the check on devices other than Kindles", function()
             helper.stubs.device.kindle = false
             assert.is_true(CurlUpdater.checkVersion())
@@ -52,7 +52,7 @@ describe("CurlUpdater", function()
             local dialog = helper.state.shown[1]
             assert.are.equal("Update curl?", dialog.title)
             assert.matches("curl v7.68.0 is installed.\nMinimum required: v8.21.0", dialog.input, 1, true)
-            -- saying what it's needed for
+            -- Saying what it's needed for.
             assert.matches("searches are slower", dialog.input, 1, true)
         end)
 
@@ -63,9 +63,9 @@ describe("CurlUpdater", function()
                 helper.state.shown[1].buttons[1][1].callback()
             end)
 
-            -- it was asked on every start before (#25)
+            -- Asking on every start would be too much (KindleFetch #25).
             it("doesn't offer it again", function()
-                assert.are.equal("8.21.0", require("settings.settings"):getCurlUpdateDeclined())
+                assert.are.equal("8.21.0", require("fetchanna.settings.settings"):getCurlUpdateDeclined())
 
                 assert.is_false(CurlUpdater.checkVersion())
                 assert.are.equal(1, #helper.state.shown)
@@ -80,22 +80,21 @@ describe("CurlUpdater", function()
                 assert.are.equal("Update curl?", helper.state.shown[2].title)
             end)
 
-            -- which was never offered again once any update had been turned down, even for a fix to a security
-            -- problem found since
+            -- Even after an update was turned down, as a newer one can fix a security problem found since.
             it("offers a newer curl than the one turned down", function()
-                require("settings.settings"):setCurlUpdateDeclined("8.17.0")
+                require("fetchanna.settings.settings"):setCurlUpdateDeclined("8.17.0")
                 CurlUpdater.checkVersion()
                 assert.are.equal(2, #helper.state.shown)
             end)
         end)
 
-        -- which said only that it was, not which
-        it("takes an update turned down by an older version of Kindle Fetch to be this one", function()
+        -- It saved only that one was turned down, not which.
+        it("takes an update turned down by an older version of FetchAnna to be this one", function()
             installedCurl("7.68.0")
-            require("settings.settings"):setCurlUpdateDeclined(true)
+            require("fetchanna.settings.settings"):setCurlUpdateDeclined(true)
             assert.is_false(CurlUpdater.checkVersion())
             assert.are.equal(0, #helper.state.shown)
-            assert.are.equal("8.21.0", require("settings.settings"):getCurlUpdateDeclined())
+            assert.are.equal("8.21.0", require("fetchanna.settings.settings"):getCurlUpdateDeclined())
         end)
 
         it("fails when the curl version cannot be read", function()
@@ -114,8 +113,8 @@ describe("CurlUpdater", function()
     describe("installing", function()
         local commands
 
-        -- record the install commands instead of running them, failing the ones listed in failures as the storage
-        -- filling up would
+        -- Records the install commands instead of running them, failing the ones listed in failures as full storage
+        -- would.
         local function stubInstall(failures)
             failures = failures or {}
             commands = {}
@@ -144,7 +143,7 @@ describe("CurlUpdater", function()
             helper.lastShown().buttons[1][2].callback()
         end
 
-        -- what the new curl says when asked its version, before it replaces the old one
+        -- What the new curl says when asked its version, before it replaces the old one.
         local function newCurlSays(output)
             helper.stubCommand("'/usr/bin/curl.new' --version", output)
         end
@@ -154,10 +153,10 @@ describe("CurlUpdater", function()
                 helper.writeFile(filepath, "curl binary")
                 return true
             end
-            -- as if this were the build that was released, which runs
+            -- As if this were the build that was released, which runs.
             CurlUpdater.SHA256 = require("ffi/sha2").sha256("curl binary")
             newCurlSays("curl 8.21.0 (arm-unknown-linux-musleabihf) libcurl/8.21.0 OpenSSL/3.5.7 zlib/1.3.1\n")
-            -- the Kindle's own curl hasn't been backed up yet
+            -- The Kindle's own curl hasn't been backed up.
             helper.state.fs["/usr/bin/curl.system.bak"] = false
         end)
 
@@ -170,7 +169,7 @@ describe("CurlUpdater", function()
                 commands
             )
             assert.are.equal("Updated curl to v8.21.0", helper.lastNotification())
-            assert.is_false(helper.exists(data_dir .. "/cache/kindlefetch/curl-armhf"))
+            assert.is_false(helper.exists(data_dir .. "/cache/fetchanna/curl-armhf"))
         end)
 
         it("keeps an existing backup of the system curl", function()
@@ -181,15 +180,15 @@ describe("CurlUpdater", function()
             assert.are.same({ "chmod", "remount_rw", "copy", "permissions", "replace", "remount_ro" }, commands)
         end)
 
-        -- e.g. once a Kindle update has put the old curl back
+        -- E.g. once a Kindle update has put the old curl back.
         it("offers to update again later, even if it was turned down before", function()
             stubInstall()
-            require("settings.settings"):setCurlUpdateDeclined("8.21.0")
+            require("fetchanna.settings.settings"):setCurlUpdateDeclined("8.21.0")
             installedCurl("7.68.0")
             CurlUpdater.checkVersion(true)
             helper.lastShown().buttons[1][2].callback()
 
-            assert.is_nil(require("settings.settings"):getCurlUpdateDeclined())
+            assert.is_nil(require("fetchanna.settings.settings"):getCurlUpdateDeclined())
         end)
 
         it("does nothing when the user cancels", function()
@@ -208,7 +207,7 @@ describe("CurlUpdater", function()
             acceptUpdate()
 
             assert.are.same({ "chmod" }, commands)
-            assert.is_false(helper.exists(data_dir .. "/cache/kindlefetch/curl-armhf"))
+            assert.is_false(helper.exists(data_dir .. "/cache/fetchanna/curl-armhf"))
             assert.are.equal(
                 "Updating curl failed: the new curl couldn't be made executable (cp: write error: No space left on "
                     .. "device)",
@@ -225,10 +224,10 @@ describe("CurlUpdater", function()
                 "^Updating curl failed: the Kindle's system files couldn't be made writable",
                 helper.lastError()
             )
-            assert.is_false(helper.exists(data_dir .. "/cache/kindlefetch/curl-armhf"))
+            assert.is_false(helper.exists(data_dir .. "/cache/fetchanna/curl-armhf"))
         end)
 
-        -- which was trusted once it was there, though it may have been cut short
+        -- A backup is trusted once it's there, so one cut short mustn't be left.
         it("keeps no backup that was cut short, making the root filesystem read-only again", function()
             stubInstall({ backup = true })
             acceptUpdate()
@@ -241,7 +240,7 @@ describe("CurlUpdater", function()
             )
         end)
 
-        -- which left the old one cut short, and no curl that would run, when copied straight over it
+        -- Copying straight over it would leave the old one cut short, and no curl that runs.
         it("leaves the old curl as it was when the new one can't be copied into place", function()
             stubInstall({ copy = true })
             acceptUpdate()
@@ -266,7 +265,7 @@ describe("CurlUpdater", function()
             assert.matches("^Updating curl failed: the old curl couldn't be replaced", helper.lastError())
         end)
 
-        -- as it had, rather than that it hadn't, and with one message, rather than two
+        -- It has updated, so it says so, in one message.
         it("says curl has updated when only making the root filesystem read-only again fails", function()
             stubInstall({ remount_ro = true })
             acceptUpdate()
@@ -288,7 +287,7 @@ describe("CurlUpdater", function()
             assert.matches("^Updating curl failed: the new curl couldn't be copied", helper.lastError())
         end)
 
-        -- so searches use it straight away, rather than KOReader's own HTTP until KOReader restarts
+        -- So searches use it straight away, not KOReader's own HTTP until KOReader restarts.
         it("looks up curl's version again once it has installed the new one", function()
             stubInstall()
             acceptUpdate()
@@ -301,7 +300,7 @@ describe("CurlUpdater", function()
             assert.are.equal("8.21.0", CurlUtil.getVersion())
         end)
 
-        -- as it's run as root once installed
+        -- It's run as root once installed.
         it("only installs the build that was released", function()
             stubInstall()
             HttpUtil.downloadFile = function(_, filepath)
@@ -311,7 +310,7 @@ describe("CurlUpdater", function()
             acceptUpdate()
 
             assert.are.same({}, commands)
-            assert.is_false(helper.exists(data_dir .. "/cache/kindlefetch/curl-armhf"))
+            assert.is_false(helper.exists(data_dir .. "/cache/fetchanna/curl-armhf"))
             assert.are.equal(
                 "Updating curl failed: curl couldn't be downloaded (what downloaded isn't the curl 8.21.0 that was "
                     .. "released)",
@@ -319,7 +318,7 @@ describe("CurlUpdater", function()
             )
         end)
 
-        -- so there's still a curl that runs, rather than putting the old one back once it has been replaced
+        -- So there's still a curl that runs, without having to put the old one back.
         it("keeps the old curl when the new one doesn't run on this Kindle", function()
             stubInstall()
             newCurlSays("/usr/bin/curl.new: line 1: syntax error: unexpected word\n")
@@ -333,7 +332,7 @@ describe("CurlUpdater", function()
                 "Updating curl failed: the new curl doesn't run on this Kindle, so the old one has been kept",
                 helper.lastError()
             )
-            -- saying what it said instead, for crash.log
+            -- Logs what it said instead, for crash.log.
             assert.is_truthy(helper.logged("warn", "^the new curl doesn't run on this Kindle, saying .*syntax error"))
             assert.is_nil(helper.lastNotification())
         end)
@@ -346,7 +345,7 @@ describe("CurlUpdater", function()
     end)
 
     describe("updating", function()
-        -- with KOReader's own HTTP, as the Kindle's own curl is too old to connect to GitHub (#57)
+        -- With KOReader's own HTTP, as the Kindle's own curl is too old to connect to GitHub (KindleFetch #57).
         it("downloads the static curl build into the plugin's tmp dir, saying why it couldn't", function()
             local download
             HttpUtil.downloadFile = function(url, filepath)
@@ -363,7 +362,7 @@ describe("CurlUpdater", function()
 
             assert.are.same({
                 url = "https://github.com/moparisthebest/static-curl/releases/download/v8.21.0/curl-armhf",
-                filepath = data_dir .. "/cache/kindlefetch/curl-armhf",
+                filepath = data_dir .. "/cache/fetchanna/curl-armhf",
             }, download)
             assert.are.equal(
                 "Updating curl failed: curl couldn't be downloaded (could not resolve host)",
@@ -371,7 +370,7 @@ describe("CurlUpdater", function()
             )
         end)
 
-        -- so a newer curl isn't asked for without its SHA-256, which no Kindle would then install
+        -- So a newer curl isn't asked for without its SHA-256, which no Kindle would then install.
         it("knows the SHA-256 of the static curl build on GitHub #live", function()
             helper.stubs.http.request = helper.useLiveHttp().request
             local path = data_dir .. "/curl-armhf"
@@ -384,7 +383,7 @@ describe("CurlUpdater", function()
             assert.are.equal(CurlUpdater.SHA256, require("ffi/sha2").sha256(helper.readFile(path)))
         end)
 
-        -- which holds KOReader up until it has
+        -- The download blocks KOReader until it's done.
         it("says it's downloading curl until it has", function()
             local message
             HttpUtil.downloadFile = function()
