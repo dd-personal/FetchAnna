@@ -2,8 +2,6 @@
 
 A [KOReader](https://koreader.rocks) plugin that searches [Anna's Archive](https://open-slum.org/annas.html) and downloads books straight to your e-reader, using your own member secret key. Once it's installed, it needs no computer, Python or browser.
 
-Use it only for books you're allowed to download where you live.
-
 ## What you need
 
 - KOReader on an e-reader with Wi-Fi (see [Compatibility](#compatibility)).
