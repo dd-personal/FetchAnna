@@ -33,6 +33,15 @@ What was changed or removed:
 
 There were no account details on the page: no account id, profile link, email or cookies. The raw server HTML for this view has no results hidden in comments, so the saved page matches what FetchAnna receives.
 
+## Cloudflare, in front of SLUM
+
+Captured 2026-11-27 with curl and the User-Agent `Mozilla/5.0`, as FetchAnna sends it, without any key or cookie.
+
+| File | Request | Status | Sanitized |
+| --- | --- | --- | --- |
+| `cloudflare-403-challenge.html` | `GET https://open-slum.org/annas.html` from a GitHub Actions runner, which SLUM's Cloudflare always challenges (`cf-mitigated: challenge`) | 403 | The script nonce, ray id, timestamp, challenge tokens in its URLs and the `cH`, `md` and `mdrd` values replaced with placeholders. Otherwise verbatim. |
+| `cloudflare-jsd-beacon.html` | The same URL from a home connection | 200 | Only the one script on the page that loads Cloudflare's bot detection (`/cdn-cgi/challenge-platform/scripts/jsd/main.js`). Its ray id and timestamp replaced with placeholders. |
+
 ## Not captured
 
 - **Book detail pages (`/md5/…`).** Without a member session they stop at the DDoS-Guard challenge above.

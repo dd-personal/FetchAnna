@@ -29,8 +29,7 @@ describe("Anna's Archive, live", function()
         local parsed, why = SlumParser.parse(html)
         -- SLUM's Cloudflare puts a bot check in front of datacenter addresses, GitHub's runners included, and FetchAnna
         -- never tries to get past one. Pending rather than failed, as it says nothing about SLUM's list: run it from a
-        -- home connection to check that. Going by Cloudflare's header, as SLUM's own page has its bot-detection script,
-        -- which AnnasParser.isChallenge would take for a check.
+        -- home connection to check that. Going by Cloudflare's header, which only comes with a check.
         if not parsed and headers and headers["cf-mitigated"] == "challenge" then
             pending(
                 string.format(

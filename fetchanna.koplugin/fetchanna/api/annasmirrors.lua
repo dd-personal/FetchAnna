@@ -543,7 +543,9 @@ function AnnasMirrors.classify(body, err, status, headers)
     if err == HttpUtil.CANCELLED then
         return FAILURE.CANCELLED
     end
-    if body and AnnasMirrors.isChallenge(body) then
+    -- Cloudflare says when it answered with a browser check, whatever the page looks like.
+    local cloudflare_check = headers and headers["cf-mitigated"] == "challenge"
+    if cloudflare_check or (body and AnnasMirrors.isChallenge(body)) then
         return FAILURE.CHALLENGE
     end
     if status == 429 or status == 503 then

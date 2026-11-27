@@ -558,6 +558,16 @@ describe("AnnasMirrors", function()
             assert.are.equal(FAILURE.UNEXPECTED, classify("<html>parked</html>", nil, 200, {}))
         end)
 
+        it("tells Cloudflare's bot check from its bot-detection script", function()
+            local classify = AnnasMirrors.classify
+            local cloudflare = helper.readFile("spec/data/annas/cloudflare-403-challenge.html")
+            assert.are.equal(FAILURE.CHALLENGE, classify(cloudflare, nil, 403, {}))
+            -- Cloudflare's header says so whatever the page.
+            assert.are.equal(FAILURE.CHALLENGE, classify("", nil, 403, { ["cf-mitigated"] = "challenge" }))
+            local beacon = helper.readFile("spec/data/annas/cloudflare-jsd-beacon.html")
+            assert.are.equal(FAILURE.UNEXPECTED, classify("<html>parked" .. beacon .. "</html>", nil, 200, {}))
+        end)
+
         it("reads how long a site asked to be left for", function()
             local failure, info = AnnasMirrors.classify("slow down", nil, 429, { ["retry-after"] = "120" })
             assert.are.equal(FAILURE.RATE_LIMITED, failure)

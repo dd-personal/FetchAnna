@@ -192,6 +192,31 @@ describe("AnnasParser", function()
             assert.are.same({ nil, AnnasParser.CHALLENGE }, { AnnasParser.parseResults(challenge, 1) })
         end)
 
+        it("says when it's Cloudflare's bot check", function()
+            local cloudflare = helper.readFile("spec/data/annas/cloudflare-403-challenge.html")
+            assert.is_true(AnnasParser.isChallenge(cloudflare))
+            assert.are.same({ nil, AnnasParser.CHALLENGE }, { AnnasParser.parseResults(cloudflare, 1) })
+        end)
+
+        -- Cloudflare adds its bot-detection script to ordinary pages too.
+        it("reads the results on a page with Cloudflare's bot-detection script", function()
+            local beacon = helper.readFile("spec/data/annas/cloudflare-jsd-beacon.html")
+            local with_beacon, added = page:gsub("</body>", function()
+                return beacon .. "</body>"
+            end)
+            assert.are.equal(1, added)
+            assert.is_false(AnnasParser.isChallenge(with_beacon))
+            assert.are.same(md5s(AnnasParser.parseResults(page, 1)), md5s(AnnasParser.parseResults(with_beacon, 1)))
+        end)
+
+        -- Whatever a CDN adds, Anna's search form makes it a search page.
+        it("reads the results on a page that also looks like a bot check", function()
+            local marked = page:gsub("</body>", function()
+                return "<script>window._cf_chl_opt = {};</script></body>"
+            end)
+            assert.are.same(md5s(AnnasParser.parseResults(page, 1)), md5s(AnnasParser.parseResults(marked, 1)))
+        end)
+
         it("says when it doesn't know the page", function()
             for _, other in ipairs({ "<html>Welcome</html>", "", page:gsub('action="/search"', 'action="/other"') }) do
                 assert.are.same({ nil, AnnasParser.UNRECOGNIZED }, { AnnasParser.parseResults(other, 1) })

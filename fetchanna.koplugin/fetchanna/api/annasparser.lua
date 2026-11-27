@@ -34,7 +34,8 @@ local function text(html)
 end
 
 -- Whether a page is a browser check (DDoS-Guard's, which Anna's Archive is behind, or Cloudflare's). FetchAnna never
--- tries to get past one.
+-- tries to get past one. Not "/cdn-cgi/challenge-platform/" alone: Cloudflare adds its bot-detection script, from
+-- there, to ordinary pages too, such as SLUM's (see spec/data/annas/cloudflare-jsd-beacon.html).
 function AnnasParser.isChallenge(body)
     return type(body) == "string"
         and (
@@ -42,7 +43,8 @@ function AnnasParser.isChallenge(body)
             or body:find("<title>DDoS%-Guard</title>") ~= nil
             or body:find("Checking your browser", 1, true) ~= nil
             or body:find("cf-chl", 1, true) ~= nil
-            or body:find("challenge-platform", 1, true) ~= nil
+            or body:find("_cf_chl_opt", 1, true) ~= nil
+            or body:find("/cdn-cgi/challenge-platform/h/", 1, true) ~= nil
         )
 end
 
@@ -197,11 +199,9 @@ function AnnasParser.parseResults(html, page)
     if type(html) ~= "string" or #html > MAX_PAGE_BYTES then
         return nil, AnnasParser.UNRECOGNIZED
     end
-    if AnnasParser.isChallenge(html) then
-        return nil, AnnasParser.CHALLENGE
-    end
+    -- Anna's search form makes it a search page, whatever scripts a CDN has added to it.
     if not AnnasParser.isSearchPage(html) then
-        return nil, AnnasParser.UNRECOGNIZED
+        return nil, AnnasParser.isChallenge(html) and AnnasParser.CHALLENGE or AnnasParser.UNRECOGNIZED
     end
     local list = primaryList(html)
     if not list then
