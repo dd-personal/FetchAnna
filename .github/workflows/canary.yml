@@ -27,6 +27,6 @@ jobs:
         run: luarocks install busted
 
       # Uses SLUM, the sites as they answer without a key, and the curl build Kindles are given. Never an account's key,
-      # which this workflow isn't given.
+      # which this workflow isn't given. SLUM answers GitHub's runners with a bot check, so its test shows as pending.
       - name: Test against the live sites
         run: busted --tags=live

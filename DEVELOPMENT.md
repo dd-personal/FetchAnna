@@ -81,7 +81,7 @@ The unit tests in `spec/` run with [busted](https://lunarmodules.github.io/buste
 
 They run on every push, along with a coverage report, other than those against the live sites (tagged `#live`), which would fail a push whenever a site is down. Those run every day instead, in the Canary workflow, and can be run with `busted --tags=live`:
 
-- SLUM still lists Anna's Archive's sites in a way FetchAnna can read
+- SLUM still lists Anna's Archive's sites in a way FetchAnna can read. SLUM's Cloudflare answers GitHub's runners with a bot check, so in the Canary workflow this one shows as pending. Run it from a home connection to check it.
 - at least one of the sites FetchAnna is released with answers its member API as Anna's Archive does, asked for nothing, which sends no key and uses up nothing
 - the static curl build Kindles are given still has the SHA-256 FetchAnna expects
 
